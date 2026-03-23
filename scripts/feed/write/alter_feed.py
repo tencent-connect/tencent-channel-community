@@ -285,9 +285,65 @@ def _parse_video_ext_info3(ext_info3: bytes, hint_width: int = 0,
     }
 
 
+def _ensure_ffmpeg() -> bool:
+    """检测 ffmpeg 是否可用，不可用时尝试自动安装。返回是否可用。"""
+    import shutil, subprocess, platform, sys
+
+    if shutil.which("ffmpeg"):
+        return True
+
+    system = platform.system().lower()
+    print("[alter_feed] ffmpeg 未找到，尝试自动安装...", file=sys.stderr)
+
+    install_cmds = {
+        "darwin":  ["brew", "install", "ffmpeg"],
+        "linux":   ["sudo", "apt-get", "install", "-y", "ffmpeg"],
+        "windows": ["winget", "install", "--id", "Gyan.FFmpeg", "-e",
+                     "--accept-source-agreements", "--accept-package-agreements"],
+    }
+    cmd = install_cmds.get(system)
+    if not cmd:
+        print(f"[alter_feed] 不支持的平台 ({system})，请手动安装 ffmpeg", file=sys.stderr)
+        return False
+
+    if system == "linux":
+        try:
+            subprocess.run(["sudo", "apt-get", "update", "-y"],
+                           capture_output=True, timeout=120)
+        except Exception:
+            pass
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        if proc.returncode == 0 and shutil.which("ffmpeg"):
+            print("[alter_feed] ffmpeg 安装成功", file=sys.stderr)
+            return True
+        else:
+            stderr_text = proc.stderr.decode("utf-8", errors="replace")[:500] if proc.stderr else ""
+            print(f"[alter_feed] ffmpeg 安装失败 (returncode={proc.returncode}): {stderr_text}",
+                  file=sys.stderr)
+            return False
+    except FileNotFoundError:
+        fallback = {
+            "darwin":  "请先安装 Homebrew (https://brew.sh)，然后运行: brew install ffmpeg",
+            "linux":   "请运行: sudo apt-get install -y ffmpeg",
+            "windows": "请从 https://ffmpeg.org/download.html 下载安装，或运行: choco install ffmpeg",
+        }
+        print(f"[alter_feed] 自动安装失败，{fallback.get(system, '请手动安装 ffmpeg')}",
+              file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"[alter_feed] ffmpeg 安装异常: {e}", file=sys.stderr)
+        return False
+
+
 def _extract_video_cover(video_path: str) -> str:
-    """用 ffmpeg 提取视频封面帧，失败返回空字符串。"""
+    """用 ffmpeg 提取视频封面帧，ffmpeg 不存在时尝试自动安装。失败返回空字符串。"""
     import subprocess, tempfile, os
+
+    if not _ensure_ffmpeg():
+        return ""
+
     tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
     tmp.close()
     try:

@@ -541,30 +541,38 @@ def _make_rich_text_contents_multi(text: str, at_users: list = None) -> list:
     将纯文本按 \\n 拆成多个 StRichText.contents 元素，与 patternInfo 的
     blockParagraph 块数保持一一对应，避免服务端构建 content_with_style 时
     因 contents 项数不足而产生大量空白段落。
-    at 节点作为首段前缀插入。
+    文本节点在前，at 节点追加在末尾，pattern_id 与 patternInfo type=3 节点的 id 对应。
     """
     paragraphs = text.split("\n") if text else [""]
-    at_nodes = _build_at_nodes(at_users)
     result = []
-    for i, para in enumerate(paragraphs):
-        if i == 0:
-            # 首段：at 节点 + 文本（有 at 时文本前补空格）
-            nodes = list(at_nodes)
-            body = (" " + para) if nodes and para else para
-            nodes.append({"type": 1, "text_content": {"text": body}, "pattern_id": ""})
-            result.extend(nodes)
-        else:
-            result.append({"type": 1, "text_content": {"text": para}, "pattern_id": ""})
+    for para in paragraphs:
+        result.append({"type": 1, "text_content": {"text": para}, "pattern_id": ""})
+    # AT 节点追加在末尾，pattern_id 从 "1" 递增，与 patternInfo type=3 节点的 id 对应
+    for i, u in enumerate(at_users or [], start=1):
+        result.append({
+            "type": 2,
+            "at_content": {
+                "user": {
+                    "id":   str(u.get("id", "")),
+                    "nick": u.get("nick", ""),
+                },
+                "type": 1,
+            },
+            "pattern_id": str(i),
+        })
     return result
 
 
-def _make_pattern_info_long(content: str, images: list, videos: list = None) -> str:
+def _make_pattern_info_long(content: str, images: list, videos: list = None,
+                            at_users: list = None) -> str:
     """
     生成长贴(feed_type=2)的 patternInfo JSON 字符串。
-    图片(type=6)和视频(type=7)节点追加在末段。
+    AT节点(type=3)在末段，图片(type=6)和视频(type=7)节点追加在末段。
     """
     if videos is None:
         videos = []
+    if at_users is None:
+        at_users = []
     paragraphs = content.split("\n") if content else [""]
     ts_ms = int(time.time() * 1000)
 
@@ -583,8 +591,17 @@ def _make_pattern_info_long(content: str, images: list, videos: list = None) -> 
                 "props": {"fontWeight": 400, "italic": False, "underline": False}
             }
         ]
-        # 末段追加图片节点 type=6 和视频节点 type=7
+        # 末段追加 AT 节点 type=3、图片节点 type=6 和视频节点 type=7
         if i == len(paragraphs) - 1:
+            # AT 节点 type=3
+            for j, u in enumerate(at_users, start=1):
+                block_data.append({
+                    "user": {"id": str(u.get("id", "")), "nick": u.get("nick", "")},
+                    "id": str(j),
+                    "status": 0, "widthPercent": 0,
+                    "type": 3,
+                    "height": 0, "duration": 0, "width": 0,
+                })
             for idx, img in enumerate(images):
                 pic_id = img.get("task_id") or img.get("md5", str(ts_ms))
                 block_data.append({
@@ -627,14 +644,17 @@ def _make_pattern_info_long(content: str, images: list, videos: list = None) -> 
     return json.dumps(blocks, ensure_ascii=False)
 
 
-def _make_pattern_info_short(content: str, images: list, videos: list = None) -> str:
+def _make_pattern_info_short(content: str, images: list, videos: list = None,
+                             at_users: list = None) -> str:
     """
     生成短贴(feed_type=1)的 patternInfo JSON 字符串。
-    图片节点 type=6，视频节点 type=7，各单独一个 blockParagraph。
+    AT节点(type=3)在第二个 blockParagraph 中，图片节点 type=6，视频节点 type=7，各单独一个 blockParagraph。
     """
     import uuid
     if videos is None:
         videos = []
+    if at_users is None:
+        at_users = []
     blocks = [
         {
             "id": str(uuid.uuid4()).upper(),
@@ -642,18 +662,28 @@ def _make_pattern_info_short(content: str, images: list, videos: list = None) ->
             "data": [{"status": 0, "widthPercent": 0, "type": 1, "text": "",
                        "height": 0, "duration": 0, "width": 0}]
         },
-        {
-            "id": str(uuid.uuid4()).upper(),
-            "props": {"textAlignment": 0},
-            "type": "blockParagraph",
-            "data": [
-                {"props": {"textAlignment": 0}, "status": 0, "widthPercent": 0,
-                 "type": 1, "height": 0, "duration": 0, "width": 0},
-                {"status": 0, "widthPercent": 0, "type": 11,
-                 "height": 0, "duration": 0, "width": 0},
-            ]
-        },
     ]
+    # 第二个 blockParagraph：文本占位 + AT 节点 + type=11 结束节点
+    data2 = [
+        {"props": {"textAlignment": 0}, "status": 0, "widthPercent": 0,
+         "type": 1, "height": 0, "duration": 0, "width": 0},
+    ]
+    for j, u in enumerate(at_users, start=1):
+        data2.append({
+            "user": {"id": str(u.get("id", "")), "nick": u.get("nick", "")},
+            "id": str(j),
+            "status": 0, "widthPercent": 0,
+            "type": 3,
+            "height": 0, "duration": 0, "width": 0,
+        })
+    data2.append({"status": 0, "widthPercent": 0, "type": 11,
+                  "height": 0, "duration": 0, "width": 0})
+    blocks.append({
+        "id": str(uuid.uuid4()).upper(),
+        "props": {"textAlignment": 0},
+        "type": "blockParagraph",
+        "data": data2,
+    })
     # 图片节点 type=6
     for idx, img in enumerate(images):
         pic_id = img.get("task_id") or img.get("md5", "")
@@ -871,9 +901,9 @@ def run(params: dict) -> dict:
 
     # 选择 patternInfo 生成方式
     if feed_type == 1:
-        pattern_info = _make_pattern_info_short(content, images, videos)
+        pattern_info = _make_pattern_info_short(content, images, videos, at_users)
     else:
-        pattern_info = _make_pattern_info_long(content, images, videos)
+        pattern_info = _make_pattern_info_long(content, images, videos, at_users)
 
     # images[] 数组：pattern_id 使用递增序号 "1","2",...
     # 短贴时 picUrl 填本地占位路径（对齐线上客户端），长贴时留空

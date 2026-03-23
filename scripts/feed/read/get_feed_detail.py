@@ -13,7 +13,7 @@ from typing import Any
 
 # 将 skills 根目录加入模块搜索路径，以便导入 _mcp_client
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp
+from _mcp_client import call_mcp, get_feed_share_url
 from _richtext import decode_richtext_dict
 
 # tool 名称（与 proto 中 mcp_rule.name 一致）
@@ -23,7 +23,7 @@ SKILL_MANIFEST = {
     "name": "get-feed-detail",
     "description": (
         "获取指定帖子的完整详情，包括帖子标题、正文内容、作者信息、发布时间、"
-        "评论数、点赞数、所属频道及板块信息等。"
+        "评论数、点赞数、所属频道及板块信息、分享链接等。"
     ),
     "parameters": {
         "type": "object",
@@ -88,7 +88,8 @@ def run(params: dict) -> dict:
                     "like_count": int,
                     "guild_id": int,
                     "channel_id": int,
-                    "channel_name": str
+                    "channel_name": str,
+                    "share_url": str    # 帖子分享短链
                 }
             }
         }
@@ -160,6 +161,13 @@ def run(params: dict) -> dict:
                 }.items() if v}
                 for vid in raw_videos if isinstance(vid, dict)
             ]
+        # 获取帖子分享短链
+        guild_id = str(feed.get("guildId") or feed.get("guild_id") or params.get("guild_id") or "")
+        channel_id = str(feed.get("channelId") or feed.get("channel_id") or params.get("channel_id") or "")
+        feed_id = feed.get("id") or params["feed_id"]
+        share_url = get_feed_share_url(guild_id, channel_id, feed_id)
+        if share_url:
+            feed["share_url"] = share_url
         return {"success": True, "data": structured}
     except Exception as e:
         return {"success": False, "error": str(e)}

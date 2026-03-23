@@ -56,7 +56,7 @@
   - `3` = 最相关
 - 用户说“热门帖子” / “最热的帖”时，必须传 `get_type=1`。
 - 用户说“最新帖子”时，必须传 `get_type=2`；此时还需要传 `sort_option`。
-- 不确定时默认使用 `get_type=1`（热门）。
+- 不确定时默认使用 `get_type=2`（最新）。
 - 如果直接调用 MCP 的 `get_guild_feeds` 工具，也必须显式传 `getType=1` 或 `getType=2`，不可省略。
 - `get-channel-timeline-feeds` **仅用于获取指定板块（子频道）的帖子**，需要同时提供 `guild_id` 和 `channel_id`。
 - 当用户只说“获取频道的帖子”而没有指定具体板块时，应使用 `get-guild-feeds`，不要改用 `get-channel-timeline-feeds`。
