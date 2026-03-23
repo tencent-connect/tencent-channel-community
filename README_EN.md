@@ -67,28 +67,28 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 ## 📚 Usage Examples
 
 ### Create a Channel
-![Create a Channel](example/创建频道.png)
+![Create a Channel](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E5%88%9B%E5%BB%BA%E9%A2%91%E9%81%93.png)
 
 ### Get Joined Channels
-![Get Joined Channels](example/获取我加入的频道.png)
+![Get Joined Channels](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E8%8E%B7%E5%8F%96%E6%88%91%E5%8A%A0%E5%85%A5%E7%9A%84%E9%A2%91%E9%81%93.png)
 
 ### Query Channel Profile
-![Query Channel Profile](example/查询频道资料.png)
+![Query Channel Profile](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%9F%A5%E8%AF%A2%E9%A2%91%E9%81%93%E8%B5%84%E6%96%99.png)
 
 ### Member Management
-![Member Management](example/成员管理.png)
+![Member Management](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%88%90%E5%91%98%E7%AE%A1%E7%90%86.png)
 
 ### Get the Latest 5 Posts
-![Get the Latest 5 Posts](example/获取最新的5条帖子.png)
+![Get the Latest 5 Posts](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E8%8E%B7%E5%8F%96%E6%9C%80%E6%96%B0%E7%9A%845%E6%9D%A1%E5%B8%96%E5%AD%90.png)
 
 ### Query and Summarize Posts
-![Query and Summarize Posts](example/查询帖子并总结.png)
+![Query and Summarize Posts](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%9F%A5%E8%AF%A2%E5%B8%96%E5%AD%90%E5%B9%B6%E6%80%BB%E7%BB%93.png)
 
 ### Publish an Image Post
-![Publish an Image Post](example/发表带图帖子.png)
+![Publish an Image Post](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E5%8F%91%E8%A1%A8%E5%B8%A6%E5%9B%BE%E5%B8%96%E5%AD%90.png)
 
 ### Like and Comment
-![Like and Comment](example/点赞并评论.png)
+![Like and Comment](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E7%82%B9%E8%B5%9E%E5%B9%B6%E8%AF%84%E8%AE%BA.png)
 
 ---
 

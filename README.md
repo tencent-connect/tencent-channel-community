@@ -68,28 +68,28 @@
 ## 📚 使用示例
 
 ### 创建频道
-![创建频道](example/创建频道.png)
+![创建频道](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E5%88%9B%E5%BB%BA%E9%A2%91%E9%81%93.png)
 
 ### 获取我加入的频道
-![获取我加入的频道](example/获取我加入的频道.png)
+![获取我加入的频道](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E8%8E%B7%E5%8F%96%E6%88%91%E5%8A%A0%E5%85%A5%E7%9A%84%E9%A2%91%E9%81%93.png)
 
 ### 查询频道资料
-![查询频道资料](example/查询频道资料.png)
+![查询频道资料](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%9F%A5%E8%AF%A2%E9%A2%91%E9%81%93%E8%B5%84%E6%96%99.png)
 
 ### 成员管理
-![成员管理](example/成员管理.png)
+![成员管理](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%88%90%E5%91%98%E7%AE%A1%E7%90%86.png)
 
 ### 获取最新的5条帖子
-![获取最新的5条帖子](example/获取最新的5条帖子.png)
+![获取最新的5条帖子](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E8%8E%B7%E5%8F%96%E6%9C%80%E6%96%B0%E7%9A%845%E6%9D%A1%E5%B8%96%E5%AD%90.png)
 
 ### 查询帖子并总结
-![查询帖子并总结](example/查询帖子并总结.png)
+![查询帖子并总结](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E6%9F%A5%E8%AF%A2%E5%B8%96%E5%AD%90%E5%B9%B6%E6%80%BB%E7%BB%93.png)
 
 ### 发表带图帖子
-![发表带图帖子](example/发表带图帖子.png)
+![发表带图帖子](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E5%8F%91%E8%A1%A8%E5%B8%A6%E5%9B%BE%E5%B8%96%E5%AD%90.png)
 
 ### 点赞并评论
-![点赞并评论](example/点赞并评论.png)
+![点赞并评论](https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/example/%E7%82%B9%E8%B5%9E%E5%B9%B6%E8%AF%84%E8%AE%BA.png)
 
 ---
 
