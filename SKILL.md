@@ -18,7 +18,7 @@ metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","
 - 获取频道资料、成员列表、子频道列表、分享链接
 - 搜索频道、帖子、作者；加入频道；设置禁言；踢出成员；修改头像与资料；发送 QQ 消息
 - 浏览频道主页帖子、指定版块帖子、帖子详情、评论与回复
-- 发帖、改帖、删帖、评论、回复、点赞、富媒体上传
+- 发帖、改帖、删帖、评论、回复、点赞、图片/视频上传
 - 内容巡检、问答自动回复等辅助运营任务
 
 ## 场景路由表
@@ -29,7 +29,7 @@ metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","
 |------|-------------|----------|
 | Token 配置、连通性校验、频道资料查询、频道创建与管理 | manage | `references/manage-reference.md` |
 | 浏览频道主页帖子、查看帖子详情 / 评论 / 回复、搜索帖子 | feed.read | `references/feed-reference.md` |
-| 发帖、改帖、删帖、评论、回复、点赞、富媒体上传 | feed.write | `references/feed-reference.md` |
+| 发帖、改帖、删帖、评论、回复、点赞、图片/视频上传 | feed.write | `references/feed-reference.md` |
 | 内容巡检、问答自动回复 | feed.operation | `references/feed-reference.md` |
 
 ## 文件目录结构
