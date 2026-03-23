@@ -1,0 +1,174 @@
+"""
+Skill: get_feed_detail
+描述: 获取指定帖子的完整详情，包括标题、正文、作者、所属频道及板块信息
+MCP 服务: trpc.group_pro.open_platform_agent_mcp.FeedReaderMcpSvr
+
+鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+"""
+
+import json
+import sys
+import os
+from typing import Any
+
+# 将 skills 根目录加入模块搜索路径，以便导入 _mcp_client
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from _mcp_client import call_mcp
+from _richtext import decode_richtext_dict
+
+# tool 名称（与 proto 中 mcp_rule.name 一致）
+TOOL_NAME = "get_feed_detail"
+
+SKILL_MANIFEST = {
+    "name": "get-feed-detail",
+    "description": (
+        "获取指定帖子的完整详情，包括帖子标题、正文内容、作者信息、发布时间、"
+        "评论数、点赞数、所属频道及板块信息等。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "feed_id": {
+                "type": "string",
+                "description": "帖子ID，必填"
+            },
+            "guild_id": {
+                "type": "integer",
+                "description": "频道ID，uint64，建议填写以加速查询"
+            },
+            "channel_id": {
+                "type": "integer",
+                "description": "板块（子频道）ID，uint64，建议填写以加速查询"
+            },
+            "author_id": {
+                "type": "string",
+                "description": "帖子作者ID（发表者用户ID），建议填写以加速查询"
+            },
+            "create_time": {
+                "type": "integer",
+                "description": "帖子发表时间（秒级时间戳），uint64，建议填写以加速查询"
+            }
+        },
+        "required": ["feed_id"]
+    }
+}
+
+
+# =========================================================
+# Skill 入口
+# =========================================================
+
+def run(params: dict) -> dict:
+    """
+    Skill 主入口，供 agent 框架调用。
+
+    参数:
+        params: 符合 SKILL_MANIFEST.parameters 描述的字典
+
+    返回:
+        {
+            "success": True,
+            "data": {
+                "feed": {
+                    "feed_id": str,
+                    "title": {                # 帖子标题（已解码）
+                        "text": str,
+                        "at_users": [{"id": str, "nick": str}],  # 标题中被@的用户（有时出现）
+                        "images": [...],
+                    },
+                    "contents": {             # 帖子正文（已解码）
+                        "text": str,
+                        "at_users": [{"id": str, "nick": str}],  # 正文中被@的用户（有时出现）
+                        "images": [...],
+                    },
+                    "author_name": str,
+                    "author_id": str,
+                    "create_time": int,   # 秒级时间戳
+                    "comment_count": int,
+                    "like_count": int,
+                    "guild_id": int,
+                    "channel_id": int,
+                    "channel_name": str
+                }
+            }
+        }
+        或 {"success": False, "error": "..."}
+    """
+    from _skill_runner import validate_required
+    err = validate_required(params, SKILL_MANIFEST)
+    if err:
+        return err
+    arguments: dict[str, Any] = {
+        "feed_id": params["feed_id"],
+    }
+
+    if "guild_id" in params:
+        arguments["guild_id"] = str(params["guild_id"])
+    if "channel_id" in params:
+        arguments["channel_id"] = str(params["channel_id"])
+    if "author_id" in params:
+        arguments["author_id"] = str(params["author_id"])
+    if "create_time" in params:
+        arguments["create_time"] = str(params["create_time"])
+
+    try:
+        result = call_mcp(TOOL_NAME, arguments)
+        structured = result.get("structuredContent") or {}
+        feed = structured.get("feed") or {}
+        # 服务端对不存在的帖子返回空 feed，而非错误码
+        if not feed or not feed.get("id"):
+            return {"success": False, "error": f"帖子不存在或已删除：{params['feed_id']}"}
+        # 解码 title / contents 中的 RichText（含图片）
+        if isinstance(feed.get("title"), dict):
+            feed["title"] = decode_richtext_dict(feed["title"])
+        if isinstance(feed.get("contents"), dict):
+            feed["contents"] = decode_richtext_dict(feed["contents"])
+
+        # images：StFeed.images（field 13）→ 保留完整结构（含 picId/width/height/picUrl）
+        # picId 用于 alter_feed 时 patternInfo 图片节点 taskId/fileId 及 images[].picId
+        raw_images = feed.get("images")
+        if isinstance(raw_images, list):
+            feed["images"] = [
+                {k: v for k, v in {
+                    "picId":  img.get("picId"),
+                    "picUrl": img.get("picUrl"),
+                    "width":  img.get("width"),
+                    "height": img.get("height"),
+                }.items() if v}
+                for img in raw_images if isinstance(img, dict) and img.get("picUrl")
+            ]
+        # cover：StFeed.cover（field 37）→ 提取封面图 URL
+        cover = feed.get("cover")
+        if isinstance(cover, dict):
+            feed["cover"] = cover.get("picUrl") or None
+        # videos：StFeed.videos（field 5）→ 提取帖子视频信息列表（含封面）
+        raw_videos = feed.get("videos")
+        if isinstance(raw_videos, list):
+            feed["videos"] = [
+                {k: v for k, v in {
+                    "fileId":   vid.get("fileId"),
+                    "playUrl":  vid.get("playUrl"),
+                    "duration": vid.get("duration"),
+                    "width":    vid.get("width"),
+                    "height":   vid.get("height"),
+                    "cover":    {ck: cv for ck, cv in {
+                        "picId":  (vid.get("cover") or {}).get("picId"),
+                        "picUrl": (vid.get("cover") or {}).get("picUrl"),
+                        "width":  (vid.get("cover") or {}).get("width"),
+                        "height": (vid.get("cover") or {}).get("height"),
+                    }.items() if cv} if vid.get("cover") else None,
+                }.items() if v}
+                for vid in raw_videos if isinstance(vid, dict)
+            ]
+        return {"success": True, "data": structured}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# =========================================================
+# 本地测试入口
+# =========================================================
+
+if __name__ == "__main__":
+    from _skill_runner import run_as_cli
+    run_as_cli(SKILL_MANIFEST, run)
