@@ -152,7 +152,6 @@
 tencent-channel-community/
 ├── SKILL.md                    # AI 技能说明文件
 ├── scripts/
-│   ├── update.sh               # 技能更新脚本
 │   ├── token/
 │   │   ├── setup.sh            # Token 写入
 │   │   └── verify.sh           # Token 校验

@@ -151,7 +151,6 @@ All operations use the permissions of the user associated with the current token
 tencent-channel-community/
 ├── SKILL.md                    # AI skill description
 ├── scripts/
-│   ├── update.sh               # Skill update script
 │   ├── token/
 │   │   ├── setup.sh            # Token setup
 │   │   └── verify.sh           # Token verification
