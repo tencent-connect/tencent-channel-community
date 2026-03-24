@@ -51,18 +51,6 @@ tencent-channel-community/
 
 首次安装使用时，建议先完成本地 Token 配置与校验。详细流程见 `references/manage-reference.md` 中的“认证与执行约定”。
 
-### 更新 skill
-
-在 skill 根目录执行以下命令，从 CDN 拉取最新版本并自动更新本地文件（包括 `libsliceupload` 可执行依赖）：
-
-```bash
-bash scripts/update.sh
-bash scripts/update.sh --dry-run
-bash scripts/update.sh --force
-```
-
-> 更新时会自动保留 `.env` 等本地配置，变更文件会备份到 `.bak-<timestamp>/` 目录。
-
 ### 自检（推荐）
 
 ```bash
@@ -215,15 +203,5 @@ echo '{"guild_id":"<GUILD_ID>","channel_id":"<CHANNEL_ID>","content":"你好","f
 | **`get-guild-feeds` 返回 retCode `20047`** | 说明该频道可能未开启帖子功能或暂无帖子数据；应如实告知”该频道暂无帖子数据”，不要切换其他工具重试 |
 | **视频帖上传报 `slice N failed`** | 根本原因：`business_type` 传了 `1002`（图片）而非 `1003`（视频）。服务端按图片 schema 校验视频内容，在某分片时触发格式校验失败。发视频帖时必须显式传 `business_type=1003` |
 | **上传流程返回 `needs_confirm: true`** | 说明缺少 `libsliceupload` 依赖；确认后通过 `upload_image.py` 的 `action=install_deps` 自动安装 |
-
-## 技能更新
-
-使用 skill 前可按以下方式更新：
-
-```bash
-bash scripts/update.sh
-bash scripts/update.sh --dry-run
-bash scripts/update.sh --force
-```
 
 > 本 skill 当前版本号以本文件 frontmatter 中的 `version` 字段为准。
