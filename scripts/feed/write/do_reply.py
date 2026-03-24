@@ -35,8 +35,9 @@ REPLY_TYPE_DEL_OWNER = 2  # 帖子主人（Owner）删除他人回复
 SKILL_MANIFEST = {
     "name": "do-reply",
     "description": (
-        "对帖子的某条评论发表回复，或对评论下的某条回复再次回复，也可删除已有回复。"
-        "reply_type=1 时发表回复（必填 content 和 replier_id）；"
+        "回复帖子下某条已有评论，或回复评论下的某条回复，也可删除已有回复。"
+        "只要目标是某条具体的评论或回复（而非帖子本身），就必须使用本工具，不能用 do_comment。"
+        "reply_type=1 时发表回复（必填 content 和 replier_id，以及 comment_id/comment_author_id/comment_create_time）；"
         "reply_type=0 时回复者自己删除回复，reply_type=2 时帖子主人删除他人回复（均必填 reply_id）。"
         "回复某条回复时需额外填 target_reply_id 和 target_user_id。"
         "发表回复时支持通过 at_users 指定被@的用户（系统自动在内容前插入@节点）。"

@@ -144,12 +144,13 @@ def run(params: dict) -> dict:
             rich = reply.get("richContents") or {}
             decoded = decode_richtext_dict(rich) if rich else decode_richtext(reply.get("content", ""))
             r = {
-                "id":          reply.get("id", ""),
-                "content":     decoded,
-                "create_time": reply.get("createTime", ""),
-                "post_user":   reply.get("postUser") or reply.get("post_user") or {},
-                "target_user": reply.get("targetUser") or reply.get("target_user") or {},
-                "like_count":  (reply.get("likeInfo") or {}).get("count") or 0,
+                "id":              reply.get("id", ""),
+                "content":         decoded,
+                "create_time":     reply.get("createTime", ""),
+                "post_user":       reply.get("postUser") or reply.get("post_user") or {},
+                "target_user":     reply.get("targetUser") or reply.get("target_user") or {},
+                "target_reply_id": reply.get("targetReplyId") or reply.get("targetReplyID") or reply.get("target_reply_id") or "",
+                "like_count":      (reply.get("likeInfo") or {}).get("count") or 0,
             }
             at_users = decoded.get("at_users") or []
             if at_users:

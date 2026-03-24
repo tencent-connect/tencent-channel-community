@@ -35,11 +35,11 @@ SKILL_MANIFEST = {
             },
             "guild_id": {
                 "type": "integer",
-                "description": "频道ID，uint64，选填"
+                "description": "频道ID，uint64，建议填写"
             },
             "channel_id": {
                 "type": "integer",
-                "description": "板块（子频道）ID，uint64，选填"
+                "description": "板块（子频道）ID，uint64，建议填写"
             },
             "page_size": {
                 "type": "integer",
@@ -118,13 +118,12 @@ def run(params: dict) -> dict:
     if "ext_info" in params:
         arguments["ext_info"] = params["ext_info"]
 
-    channel_sign: dict[str, str] = {}
-    if "guild_id" in params:
-        channel_sign["guild_id"] = str(params["guild_id"])
-    if "channel_id" in params:
-        channel_sign["channel_id"] = str(params["channel_id"])
-    if channel_sign:
-        arguments["channelSign"] = channel_sign
+    # channel_sign 必须始终发送（服务端校验 channel_sign != nil），值为 "0" 时也要传
+    channel_sign: dict = {
+        "guild_id":   str(int(params["guild_id"]))   if "guild_id"   in params else "0",
+        "channel_id": str(int(params["channel_id"])) if "channel_id" in params else "0",
+    }
+    arguments["channelSign"] = channel_sign
 
     if "page_size" in params:
         arguments["listNum"] = int(params["page_size"])
@@ -169,10 +168,12 @@ def run(params: dict) -> dict:
                     reply_rich = reply.get("richContents") or {}
                     reply_decoded = decode_richtext_dict(reply_rich) if reply_rich else decode_richtext(reply.get("content", ""))
                     r = {
-                        "id":          reply.get("id", ""),
-                        "content":     reply_decoded,
-                        "create_time": reply.get("createTime", ""),
-                        "post_user":   reply.get("postUser") or reply.get("post_user") or {},
+                        "id":              reply.get("id", ""),
+                        "content":         reply_decoded,
+                        "create_time":     reply.get("createTime", ""),
+                        "post_user":       reply.get("postUser") or reply.get("post_user") or {},
+                        "target_user":     reply.get("targetUser") or reply.get("target_user") or {},
+                        "target_reply_id": reply.get("targetReplyId") or reply.get("targetReplyID") or reply.get("target_reply_id") or "",
                     }
                     reply_at_users = reply_decoded.get("at_users") or []
                     if reply_at_users:

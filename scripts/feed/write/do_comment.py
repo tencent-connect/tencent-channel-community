@@ -33,7 +33,8 @@ COMMENT_TYPE_DEL_OWNER = 2  # 帖子主人（Owner）删除评论
 SKILL_MANIFEST = {
     "name": "do-comment",
     "description": (
-        "对帖子发表评论或删除评论。"
+        "对帖子发表顶层评论或删除评论。"
+        "仅用于直接评论帖子本身（顶层评论）；若要回复某条已有评论，必须使用 do_reply 而非本工具。"
         "comment_type=1 时发表评论（必填 content）；"
         "comment_type=0 时评论者自己删除评论；comment_type=2 时帖子主人（Owner）删除他人评论（均必填 comment_id）。"
         "发表评论时支持通过 at_users 指定被@的用户（系统自动在内容前插入@节点）。"
