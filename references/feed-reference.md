@@ -12,7 +12,7 @@
 | 搜索帖子 | feed.read | 按关键词搜索指定频道内帖子 |
 | 发帖、改帖、删帖 | feed.write | 执行真实写入，请谨慎调用 |
 | 评论、回复、点赞 | feed.write | 包含帖子、评论、回复交互 |
-| 图片/视频上传 | feed.write | 图片 / 视频 上传，通常由发帖流程自动完成 |
+| 富媒体上传 | feed.write | 图片 / 视频 / 文件上传，通常由发帖流程自动完成 |
 | 运营辅助 | feed.operation | 内容巡检、问答自动回复 |
 
 ## 鉴权与调用约定
@@ -300,14 +300,14 @@ echo '{"feed_id":"<FEED_ID>","create_time":<UNIX_TIMESTAMP>,"guild_id":"<GUILD_I
 
 ### upload-image
 
-帖子图片/视频上传（申请 → 分片 HTTP 上传 → 状态同步），一次调用完成。
+帖子富媒体上传（申请 → 分片 HTTP 上传 → 状态同步），一次调用完成。
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `guild_id` | string | 是 | 频道 ID |
 | `channel_id` | string | 是 | 子频道 ID |
 | `file_path` | string | 是 | 本地文件路径 |
-| `business_type` | integer | 否 | 1002=图片（默认），1003=视频，1004=文件 |
+| `business_type` | integer | 否 | 1002=图片/视频缩略图（默认），**1003=视频主体**，1004=文件；⚠️ 发视频帖必须传 1003，传 1002 会导致 slice N failed |
 | `file_name` | string | 否 | 文件名；不填时从路径提取 |
 | `width` | integer | 否 | 宽度（像素） |
 | `height` | integer | 否 | 高度（像素） |
@@ -346,3 +346,4 @@ echo '{"feed_id":"<FEED_ID>","create_time":<UNIX_TIMESTAMP>,"guild_id":"<GUILD_I
 | 上传流程返回 `needs_confirm: true` | 缺少 `libsliceupload` 依赖；确认后通过 `upload_image.py` 的 `action=install_deps` 自动安装 |
 | 帖子列表 / 详情中没有分享链接 | 属于预期行为；帖子列表与详情默认不自动补取帖子分享短链，如需链接请调用 `get_guild_share_url` |
 | 发图帖失败且你正在手动拼 `images` | 优先改为给 `publish-feed` 传 `file_paths`；如必须传 `images`，字段名必须是 `url` 而不是 `picUrl` |
+| 视频帖上传报 `slice N failed` | 根本原因：`business_type` 传了 1002（图片）而非 1003（视频）。服务端用图片 schema 校验视频内容，在某分片触发格式校验失败。发视频帖必须传 `business_type=1003` |

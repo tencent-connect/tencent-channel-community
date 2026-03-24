@@ -18,7 +18,7 @@ metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","
 - 获取频道资料、成员列表、子频道列表、分享链接
 - 搜索频道、帖子、作者；加入频道；设置禁言；踢出成员；修改头像与资料；发送 QQ 消息
 - 浏览频道主页帖子、指定版块帖子、帖子详情、评论与回复
-- 发帖、改帖、删帖、评论、回复、点赞、图片/视频上传
+- 发帖、改帖、删帖、评论、回复、点赞、富媒体上传
 - 内容巡检、问答自动回复等辅助运营任务
 
 ## 场景路由表
@@ -29,7 +29,7 @@ metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","
 |------|-------------|----------|
 | Token 配置、连通性校验、频道资料查询、频道创建与管理 | manage | `references/manage-reference.md` |
 | 浏览频道主页帖子、查看帖子详情 / 评论 / 回复、搜索帖子 | feed.read | `references/feed-reference.md` |
-| 发帖、改帖、删帖、评论、回复、点赞、图片/视频上传 | feed.write | `references/feed-reference.md` |
+| 发帖、改帖、删帖、评论、回复、点赞、富媒体上传 | feed.write | `references/feed-reference.md` |
 | 内容巡检、问答自动回复 | feed.operation | `references/feed-reference.md` |
 
 ## 文件目录结构
@@ -212,7 +212,8 @@ echo '{"guild_id":"<GUILD_ID>","channel_id":"<CHANNEL_ID>","content":"你好","f
 | **`ERROR:mcporter_not_found`** | 缺少 Node.js / mcporter：先安装 Node.js，再执行 `npm install -g mcporter` |
 | **`mcporterOk: false`** | mcporter 注册失败；`~/.openclaw/.env` 通常已写入成功，可继续使用或改走手动 `mcporter config add` |
 | **MCP 鉴权失败**（如 retCode `8011`） | 到 `https://connect.qq.com/ai` 重新获取 token，重新执行 `setup.sh`，再运行 `bash scripts/token/verify.sh` |
-| **`get-guild-feeds` 返回 retCode `20047`** | 说明该频道可能未开启帖子功能或暂无帖子数据；应如实告知“该频道暂无帖子数据”，不要切换其他工具重试 |
+| **`get-guild-feeds` 返回 retCode `20047`** | 说明该频道可能未开启帖子功能或暂无帖子数据；应如实告知”该频道暂无帖子数据”，不要切换其他工具重试 |
+| **视频帖上传报 `slice N failed`** | 根本原因：`business_type` 传了 `1002`（图片）而非 `1003`（视频）。服务端按图片 schema 校验视频内容，在某分片时触发格式校验失败。发视频帖时必须显式传 `business_type=1003` |
 | **上传流程返回 `needs_confirm: true`** | 说明缺少 `libsliceupload` 依赖；确认后通过 `upload_image.py` 的 `action=install_deps` 自动安装 |
 
 ## 技能更新

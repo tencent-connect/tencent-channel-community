@@ -850,6 +850,29 @@ def run(params: dict) -> dict:
         )}
 
     video_paths = params.get("video_paths", [])
+    file_paths  = params.get("file_paths", [])
+
+    # 有本地媒体文件时，提前检查并自动安装依赖，避免上传到一半才报错
+    if video_paths or file_paths:
+        import upload_image as _uimg_check
+        if not _uimg_check._libsliceupload_ready():
+            print("[publish_feed] 检测到缺少上传依赖，正在自动安装 libsliceupload…", file=sys.stderr)
+            try:
+                _uimg_check._install_libsliceupload()
+                print("[publish_feed] 依赖安装完成。", file=sys.stderr)
+            except Exception as _install_exc:
+                return {"success": False, "error": f"依赖安装失败，无法上传媒体文件：{_install_exc}"}
+        # 检查 ffmpeg（视频帖需要提取封面帧）
+        if video_paths:
+            import shutil as _shutil
+            if not _shutil.which("ffmpeg"):
+                return {"success": False, "error": (
+                    "发布视频帖需要 ffmpeg，但未找到该命令。\n"
+                    "请先安装 ffmpeg：\n"
+                    "  macOS:  brew install ffmpeg\n"
+                    "  Ubuntu: sudo apt install ffmpeg"
+                )}
+
     videos = []
     if video_paths:
         uploaded_videos, video_err = _upload_video_paths(
@@ -862,7 +885,7 @@ def run(params: dict) -> dict:
         videos = uploaded_videos
 
     # file_paths：自动上传本地图片，上传结果追加到 images 列表最前面
-    file_paths = params.get("file_paths", [])
+    # （file_paths 已在上方依赖检查处声明）
     if file_paths:
         uploaded_images, upload_err = _upload_file_paths(
             file_paths, guild_id, channel_id, on_error=on_error

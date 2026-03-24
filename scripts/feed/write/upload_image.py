@@ -1,6 +1,6 @@
 """
 Skill: upload_image
-描述: 频道帖子图片/视频图片/视频上传完整流程（申请上传 → 分片上传 → 状态同步）
+描述: 频道帖子富媒体图片/视频上传完整流程（申请上传 → 分片上传 → 状态同步）
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）。
@@ -133,7 +133,7 @@ _BIZ_TYPE_MAP = {
 SKILL_MANIFEST = {
     "name": "upload-image",
     "description": (
-        "腾讯频道（QQ Channel）帖子图片/视频（图片/视频/文件）上传。"
+        "腾讯频道（QQ Channel）帖子富媒体（图片/视频/文件）上传。"
         "上传流程：申请上传 → 分片HTTP上传（/sliceupload protobuf格式）→ 同步状态通知后台入库，一次调用完成全流程。"
         "支持秒传（已存在相同文件时直接返回）。"
     ),
@@ -151,9 +151,9 @@ SKILL_MANIFEST = {
             "business_type": {
                 "type": "integer",
                 "description": (
-                    "图片/视频业务类型：\n"
+                    "富媒体业务类型：\n"
                     "  1002 = 频道帖子图片/视频缩略图（默认）\n"
-                    "  1003 = 频道帖子视频\n"
+                    "  1003 = 频道帖子视频主体（⚠️ 发视频帖必须传此值，传 1002 会导致 slice N failed）\n"
                     "  1004 = 频道帖子文件"
                 ),
                 "default": 1002
