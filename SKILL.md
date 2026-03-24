@@ -6,6 +6,45 @@ version: 1.0.0
 author: tencent-channel-community
 python: ">=3.10"
 metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","tencentTokenMode":"custom","tokenUrl":"https://connect.qq.com/ai","emoji":"📢"}}
+bind_mcp_methods:
+  # feed · read
+  - get_guild_feeds
+  - get_channel_timeline_feeds
+  - get_feed_detail
+  - get_feed_comments
+  - get_next_page_replies
+  - get_search_guild_feed
+  # feed · write
+  - publish_feed
+  - alter_feed
+  - del_feed
+  - do_comment
+  - do_reply
+  - do_like
+  - do_feed_prefer
+  # feed · upload
+  - apply_media_upload
+  - apply_media_upload_status_sync
+  # feed · operation
+  - channel-qa-responder
+  - auto-clean-channel-feeds
+  # manage · read
+  - get_guild_info
+  - get_my_join_guild_info
+  - get_user_info
+  - get_guild_member_list
+  - get_guild_channel_list
+  - search_guild_content
+  # manage · write
+  - get_share_url
+  - join_guild
+  - kick_guild_member
+  - modify_member_shut_up
+  - update_guild_info
+  - upload_guild_avatar
+  - upload_guild_avatar_pre
+  - create_guild
+  - push_qq_msg
 ---
 
 # 腾讯频道社区 MCP 使用指南
@@ -137,9 +176,10 @@ echo '{"guild_id":"<GUILD_ID>","channel_id":"<CHANNEL_ID>","content":"你好","f
 ### 内容管理
 
 - 帖子相关能力统一称为 **内容管理**。
-- 获取频道主页热门 / 最新帖子时，**必须使用** `get-guild-feeds`，且 **`get_type` 必须显式传入**；不传或传 `0` 会导致空数据。
-- `get-channel-timeline-feeds` **仅用于获取指定板块（子频道）的帖子**；当用户只说“获取频道的帖子”而未指定板块时，应使用 `get-guild-feeds`。
-- `get-guild-feeds` 返回后端错误（如 retCode `20047`）时，应如实告知“该频道暂无帖子数据”，**不要**自行切换到其他工具重试。
+- 获取频道主页热门 / 最新帖子时，**必须使用** `get-guild-feeds`，且 **`get_type` 必须显式传入**；不传或传 `0` 会导致空数据。用户说「热门」→ `get_type=1`；用户说「全部」「所有帖子」「最新」「按时间」或未明确指定排序 → `get_type=2`；不确定时默认传 `2`。
+- `get-channel-timeline-feeds` **仅用于获取指定板块（子频道）的帖子**；当用户只说”获取频道的帖子”而未指定板块时，应使用 `get-guild-feeds`。
+- `get-guild-feeds` 返回后端错误（如 retCode `20047`）时，应如实告知”该频道暂无帖子数据”，**不要**自行切换到其他工具重试。
+- **严禁绕开 `publish-feed` skill 脚本直接调用底层 MCP `publish_feed` 工具**，否则会产生不合规的 jsonFeed 结构导致发帖失败或内容异常。发帖只能通过 skill 脚本调用。
 - 发图帖应传 `file_paths`，**不要**手动先调用 `upload-image` 后再拼装 `images`，除非明确知道 `images` 结构且使用字段名 `url`（不是 `picUrl`）。
 - `libsliceupload` 是 **可执行程序**，不是动态库；**禁止**使用 `ctypes`、`dlopen`、`CDLL` 等方式加载。依赖不存在时，skill 会返回 `needs_confirm: true`，确认后通过 `upload_image.py` 的 `action=install_deps` 自动安装。
 - 帖子列表与帖子详情**不自动补取帖子分享短链**；如需某条帖子的分享链接，请使用 `get_guild_share_url`。`publish-feed`、`alter-feed` 成功后仍会自动补取帖子分享短链。

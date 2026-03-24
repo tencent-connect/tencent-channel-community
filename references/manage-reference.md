@@ -8,6 +8,7 @@
 |------|------------|------|
 | Token 配置与校验 | token / manage.read | 写入 token、校验 MCP 连通性 |
 | 频道创建与预览 | manage.read / manage.write | 预览创建效果、创建公开 / 私密频道 |
+| 我的频道列表 | manage.read | 获取我创建的、我管理的、我加入的频道，按角色分类 |
 | 频道资料查询 | manage.read | 获取频道资料、成员、子频道、分享链接 |
 | 频道资料维护 | manage.write | 修改头像、名称、简介 |
 | 频道成员管理 | manage.write | 禁言、踢人 |
@@ -127,7 +128,13 @@ python3 scripts/manage/read/verify_qq_ai_connect_token.py </dev/null
 - `push_qq_msg` 的 `status` 支持 `success`、`failed`、`partial`；`dry_run=true` 时只返回预览。
 - 频道分享链接固定使用 **短链格式**，不存在长链模式。
 - `get_guild_info`、`upload_guild_avatar`、`update_guild_info`、`join_guild` 成功后会自动在返回数据中附带 `share_url`。
-- `get_my_join_guild_info` 会为前 **10** 个频道自动补取分享短链；超过 10 个时，其余频道不自动补链。
+- `get_my_join_guild_info` 是获取当前用户所有相关频道的统一入口，返回结果按角色分为三类：
+  - `created_guilds`：我创建的频道（频道主身份）
+  - `managed_guilds`：我管理的频道（管理员身份）
+  - `joined_guilds`：我加入的频道（普通成员身份）
+  - 当用户说"获取我加入的频道"、"我的频道列表"、"我有哪些频道"等，应展示 **全部三类**（`total_count` 为三者之和），而非仅展示 `joined_guilds`。
+  - 当用户明确说"我创建的频道"或"我管理的频道"时，才只展示对应分类。
+  - 前 **10** 个频道会自动补取分享短链；超过 10 个时，其余频道不自动补链。
 - `search_guild_content` 支持 4 种范围：
   - `channel` = 搜频道（默认）
   - `feed` = 搜帖子
@@ -180,7 +187,29 @@ python3 scripts/manage/read/verify_qq_ai_connect_token.py </dev/null
 
 ### get_my_join_guild_info
 
+获取当前用户所有相关频道，并按角色分为三类：**我创建的、我管理的、我加入的**。
+
 无必填参数。
+
+脚本内部会在请求中自动携带 `filter.userFilter.uint32Role=1` 来请求角色信息。
+
+> **使用提示**：当用户说"获取我加入的频道"、"我的频道"、"我有哪些频道"等模糊表述时，应展示**全部三类**频道（三者之和即 `total_count`）。仅当用户明确指定"我创建的"或"我管理的"时，才只展示对应分类。
+
+**返回结构**：
+
+频道列表按用户角色分为三类返回：
+
+| 字段 | 说明 |
+|------|------|
+| `created_guilds` | 我创建的频道列表（频道主身份，`role="频道主"`） |
+| `created_guilds_count` | 我创建的频道数量 |
+| `managed_guilds` | 我管理的频道列表（管理员身份，`role="管理员"`） |
+| `managed_guilds_count` | 我管理的频道数量 |
+| `joined_guilds` | 我加入的频道列表（普通成员身份，`role="成员"`） |
+| `joined_guilds_count` | 我加入的频道数量 |
+| `total_count` | 全部频道总数（三类之和） |
+
+每个频道对象包含 `guildUserInfo.uint32Role` 字段，值含义：`0`=普通成员，`1`=管理员，`2`=频道主。脚本会将其映射为 `msgGuildInfo.role` 字段，取值为 `"频道主"`、`"管理员"` 或 `"成员"`。
 
 ### get_guild_info
 

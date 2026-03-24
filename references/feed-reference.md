@@ -54,10 +54,11 @@
   - `1` = 热门
   - `2` = 最新
   - `3` = 最相关
-- 用户说“热门帖子” / “最热的帖”时，必须传 `get_type=1`。
-- 用户说“最新帖子”时，必须传 `get_type=2`；此时还需要传 `sort_option`。
-- 不确定时默认使用 `get_type=2`（最新）。
-- 如果直接调用 MCP 的 `get_guild_feeds` 工具，也必须显式传 `getType=1` 或 `getType=2`，不可省略。
+- 用户说”热门帖子” / “最热的帖”时，必须传 `get_type=1`。
+- 用户说”最新帖子”时，必须传 `get_type=2`。
+- 用户说”**全部**” / “所有帖子” / “按时间” / 未明确指定排序时，必须传 `get_type=2`（最新序）。
+- 不确定时默认使用 `get_type=2`。
+- `get_type=2` 时 `sort_option` 不填则自动默认 `1`（发布时间序）。
 - `get-channel-timeline-feeds` **仅用于获取指定板块（子频道）的帖子**，需要同时提供 `guild_id` 和 `channel_id`。
 - 当用户只说“获取频道的帖子”而没有指定具体板块时，应使用 `get-guild-feeds`，不要改用 `get-channel-timeline-feeds`。
 - `get-guild-feeds` 返回后端错误（如 retCode `20047`）时，说明该频道可能未开启帖子功能或暂无帖子数据，应如实告知“该频道暂无帖子数据”，**不要**自行切换到其他工具重试。
@@ -65,6 +66,7 @@
 
 ### 发帖与上传规则
 
+- 发帖的唯一正确方式是调用 `publish-feed` skill 脚本，**严禁绕开脚本直接调用底层 MCP `publish_feed` 工具**，否则会产生不合规的 jsonFeed 结构导致发帖失败或内容异常。
 - 发图帖的正确方式是：给 `publish-feed` 传 `file_paths`（本地文件路径列表），skill 内部会自动完成上传全流程。
 - **禁止**手动先调用 `upload-image`，再自行拼装 `images` 参数，除非明确知道 `images` 的字段格式；字段名必须是 `url`，不是 `picUrl`。
 - `upload-image` 包含完整三步上传流程（申请 → 分片 HTTP 上传 → 状态同步），一次调用完成；**但通常不需要直接调用**。

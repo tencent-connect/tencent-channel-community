@@ -24,6 +24,8 @@ SKILL_MANIFEST = {
     "description": (
         "获取频道主页的帖子列表，支持热门、最新等多种模式，支持翻页。"
         "返回帖子ID、标题、作者、发布时间、评论数、点赞数等摘要信息。"
+        "用户说「全部」「所有帖子」「最新」「按时间」时必须传 get_type=2；"
+        "只有用户明确说「热门」时才传 get_type=1。"
     ),
     "parameters": {
         "type": "object",
@@ -42,11 +44,19 @@ SKILL_MANIFEST = {
             },
             "get_type": {
                 "type": "integer",
-                "description": "获取类型：1=热门，2=最新，3=最相关；默认1（热门）"
+                "description": (
+                    "获取类型（必填，禁止省略）："
+                    "1=热门（仅用户明确说「热门」时使用）；"
+                    "2=最新/全部（用户说「全部」「所有帖子」「最新」「按时间」或未明确指定排序时使用，默认值）；"
+                    "3=最相关。"
+                    "不确定时默认传 2。"
+                ),
+                "enum": [1, 2, 3]
             },
             "sort_option": {
                 "type": "integer",
-                "description": "排序方式，get_type=2时必填：1=发布时间序，2=评论时间序"
+                "description": "排序方式，get_type=2时传入：1=发布时间序（默认），2=评论时间序；不填自动使用1",
+                "enum": [1, 2]
             },
             "feed_attach_info": {
                 "type": "string",
@@ -86,11 +96,11 @@ def run(params: dict) -> dict:
     if not params.get("guild_id") and not params.get("guild_number"):
         return {"success": False, "error": "guild_id 和 guild_number 必须填写其中一个"}
 
-    get_type = int(params.get("get_type", 1))
+    get_type = int(params.get("get_type", 2))
     arguments["get_type"] = get_type
 
     if get_type == 2 and "sort_option" not in params:
-        return {"success": False, "error": "获取最新帖子时，必须填写排序方式（sort_option）：1=发布时间，2=评论时间"}
+        params["sort_option"] = 1  # 默认发布时间序
 
     if "guild_id" in params:
         arguments["guild_id"] = str(params["guild_id"])

@@ -18,7 +18,7 @@ TOOL_NAME = "publish_feed"
 
 SKILL_MANIFEST = {
     "name": "publish-feed",
-    "description": "在腾讯频道（QQ Channel）发表一篇新帖子。支持两种模式：1）普通用户模式：需传 guild_id 和 channel_id 指定频道和板块；2）作者身份模式：用户是频道作者时无需指定频道/板块，不传 guild_id 和 channel_id（或均传 0）即可全局发帖。支持短贴(feed_type=1,无标题)和长贴(feed_type=2,有标题)。支持附带图片/视频（本地文件自动上传至CDN）。支持在正文中@用户（at_users参数）。成功后返回新帖子ID、发表时间和分享链接。注意：只需传入 guild_id、channel_id、title、content、feed_type、at_users、images/file_paths/video_paths 等参数，patternInfo/jsonFeed 等底层字段由 skill 内部自动生成，禁止手动构造。",
+    "description": "在腾讯频道（QQ Channel）发表一篇新帖子。支持两种模式：1）普通用户模式：需传 guild_id 和 channel_id 指定频道和板块；2）作者身份模式：用户是频道作者时无需指定频道/板块，不传 guild_id 和 channel_id（或均传 0）即可全局发帖。支持短贴(feed_type=1,无标题)和长贴(feed_type=2,有标题)。支持附带图片/视频（本地文件自动上传至CDN）。支持在正文中@用户（at_users参数）。成功后返回新帖子ID、发表时间和分享链接。注意：只需传入 guild_id、channel_id、title、content、feed_type、at_users、images/file_paths/video_paths 等参数，patternInfo/jsonFeed 等底层字段由 skill 内部自动生成，严禁手动构造；严禁绕开本 skill 直接调用底层 MCP publish_feed 工具，否则会产生不合规的 jsonFeed 结构。",
     "parameters": {
         "type": "object",
         "properties": {
