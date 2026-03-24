@@ -190,22 +190,32 @@ python3 scripts/manage/read/verify_qq_ai_connect_token.py </dev/null
 
 ### get_guild_member_list
 
-**支持自动多页拉取**：直接传 `get_num` 即可，脚本内部自动处理翻页，无需手动传递翻页游标。
+**支持分页**：每页最多返回 50 个成员。翻页时将上一次返回的 `next_page_token` 原样传入即可。
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `guild_id` | string | 是 | 频道 ID |
-| `get_num` | integer | 否 | 期望返回的成员数量，默认 `20`，脚本自动翻页直到拿满 |
+| `get_num` | integer | 否 | 每页成员数，默认 `20`，最大 `50` |
 | `get_type` | string | 否 | 拉取类型：`GET_ALL`（默认）/ `GET_ADMIN` / `GET_ROBOT` / `GET_NORMAL_MEMBER` / `GET_OWNER_AND_ADMIN` |
 | `sort_type` | string | 否 | 排序类型：`ROLE_AND_JOIN_TIME`（默认）/ `ROLE_AND_UIN` / `NO_ROLE_AND_UIN` |
-| `start_index` | string | 否 | 手动翻页游标（通常不需要，脚本自动处理） |
-| `trans_buf` | string | 否 | 手动翻页透传（通常不需要，脚本自动处理） |
+| `next_page_token` | string | 否 | 翻页令牌。不传=第一页；传上次返回的 `next_page_token` 即可翻到下一页 |
 
-> 返回结果中若存在 `_pagination.has_more = true`，表示还有更多成员可拉取。
->
-> **重要**：`total_fetched` 表示 **本次拉取到的成员数量**，并非频道总人数；如需频道总人数，请使用 `get_guild_info`。
+**返回结构**：
 
-**⚠️ 重要提示**：此接口返回的 `total_fetched` 字段表示**本次拉取到的成员数量**，并非频道的总成员数。**如需获取频道总人数，请使用 `get_guild_info` 接口**，该接口返回的频道资料中包含总成员数信息。
+成员按角色分为三个独立列表返回：
+
+| 字段 | 说明 |
+|------|------|
+| `owners` | 频道主列表（通常只有 1 人） |
+| `admins` | 管理员列表 |
+| `members` | 普通成员列表 |
+| `total_fetched` | 本页返回的成员数（**非频道总人数**） |
+| `has_more` | 布尔值，`true` 表示还有下一页 |
+| `next_page_token` | 仅当 `has_more=true` 时出现，下次调用原样传入即可翻页 |
+
+每个成员对象包含 `role` 字段（`"频道主"` / `"管理员"` / `"成员"`），以及 `bytesMemberName`（成员名）、`bytesNickName`（昵称）、`uint64Tinyid`（成员 ID）、`uint64JoinTime`（加入时间戳）等。
+
+> **重要**：`total_fetched` 表示 **本页返回的成员数量**，并非频道总人数；如需频道总人数，请使用 `get_guild_info`。
 
 ### get_user_info
 

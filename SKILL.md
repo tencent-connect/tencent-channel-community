@@ -167,7 +167,7 @@ echo '{"guild_id":"<GUILD_ID>","channel_id":"<CHANNEL_ID>","content":"你好","f
 ### 参数依赖
 
 - 需要 `guild_id` 但上下文中没有 → 先调 `get_my_join_guild_info` 获取频道列表。
-- 需要 `tiny_id` / `member_tinyid` 但上下文中没有 → 先调 `get_guild_member_list` 获取成员列表。
+- 需要 `tiny_id` / `member_tinyid` 但上下文中没有 → 先调 `get_guild_member_list` 获取成员列表。该工具返回 `owners`（频道主）、`admins`（管理员）、`members`（普通成员）三个独立列表，每个成员带有 `uint64Tinyid` 字段。要拉更多成员只需增大 `get_num`，无需手动翻页。
 - 需要 `channel_id` 但上下文中没有 → 先调 `get_guild_channel_list` 获取子频道列表。
 
 ## Sensitive Fields Policy
