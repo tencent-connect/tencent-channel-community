@@ -15,6 +15,10 @@ at 支持：
     格式参考：[{"id": "144115219800577368", "nick": "用户昵称"}]
 
 鉴权：get_token() → .env → mcporter（见 scripts/manage/common.py）。
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -23,7 +27,7 @@ import os
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp
+from _mcp_client import call_mcp, format_timestamp, build_json_contents
 
 TOOL_NAME = "do_reply"
 
@@ -39,7 +43,8 @@ SKILL_MANIFEST = {
         "只要目标是某条具体的评论或回复（而非帖子本身），就必须使用本工具，不能用 do_comment。"
         "reply_type=1 时发表回复（必填 content 和 replier_id，以及 comment_id/comment_author_id/comment_create_time）；"
         "reply_type=0 时回复者自己删除回复，reply_type=2 时帖子主人删除他人回复（均必填 reply_id）。"
-        "回复某条回复时需额外填 target_reply_id 和 target_user_id。"
+        "回复某条回复时需额外填 target_reply_id、target_user_id 和 target_user_nick（被回复人昵称），"
+        "skill 会自动在内容前插入 @昵称 节点，使回复显示「回复 @xxx」。"
         "发表回复时支持通过 at_users 指定被@的用户（系统自动在内容前插入@节点）。"
         "成功发表后返回回复ID和回复时间。"
     ),
@@ -55,8 +60,8 @@ SKILL_MANIFEST = {
                 "description": "帖子发表人用户ID，string，必填"
             },
             "feed_create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "comment_id": {
                 "type": "string",
@@ -67,8 +72,8 @@ SKILL_MANIFEST = {
                 "description": "评论发表人用户ID，string，必填"
             },
             "comment_create_time": {
-                "type": "integer",
-                "description": "评论发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "评论发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "reply_type": {
                 "type": "integer",
@@ -123,19 +128,32 @@ SKILL_MANIFEST = {
             },
             "target_reply_id": {
                 "type": "string",
-                "description": "被回复的回复ID（回复某条回复时填写），string，选填"
+                "description": (
+                    "被回复的回复ID。"
+                    "**当你要回复的对象是某条回复（而非评论本身）时，此字段必须填写**，"
+                    "否则楼层嵌套关系丢失，UI 无法正确显示「回复 @xxx」。"
+                    "从 get_feed_comments 的 replies_preview[].reply_id 或 get_next_page_replies 的 replies[].id 获取。"
+                )
             },
             "target_user_id": {
                 "type": "string",
-                "description": "被回复人用户ID，string，选填"
+                "description": (
+                    "被回复人用户ID。"
+                    "回复某条回复时必须填写（与 target_reply_id 配套使用）。"
+                    "从 get_feed_comments 的 replies_preview[].author_id 或 get_next_page_replies 的 replies[].author_id 获取。"
+                )
+            },
+            "target_user_nick": {
+                "type": "string",
+                "description": "被回复人昵称，string，选填。与 target_user_id 配合使用，系统会自动在内容前插入 @昵称 节点，使回复显示「回复 @xxx」"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写"
             }
         },
         "required": [
@@ -145,37 +163,6 @@ SKILL_MANIFEST = {
         ]
     }
 }
-
-
-def _build_json_reply_contents(content: str, at_users: list) -> list:
-    """
-    构造 jsonReply.contents 数组。
-    - at_users 中每个用户生成一个 type=2（AT）节点，放在最前面
-    - 若有文本内容则追加一个 type=1（TEXT）节点
-    at_content 结构对应线上抓包（type=1 表示普通用户 AT）：
-        {"type": 2, "at_content": {"user": {"id": "...", "icon": {"iconUrl": ""}, "nick": "..."}, "type": 1}}
-    """
-    contents = []
-    for u in (at_users or []):
-        contents.append({
-            "type": 2,
-            "at_content": {
-                "user": {
-                    "id":   str(u.get("id", "")),
-                    "nick": u.get("nick", ""),
-                },
-                "type": 1,  # AT_TYPE_USER=1
-            }
-        })
-    if content:
-        # at 用户后跟一个空格再接正文（与客户端抓包一致）
-        text = (" " + content) if contents else content
-        contents.append({
-            "text_content": {"text": text},
-            "type": 1,
-            "pattern_id": "",
-        })
-    return contents
 
 
 def run(params: dict) -> dict:
@@ -195,6 +182,11 @@ def run(params: dict) -> dict:
         return err
     reply_type = params["reply_type"]
 
+    # 枚举值校验：防止非法值（如 99）进入 else 分支错误构造删除请求
+    valid_reply_types = (REPLY_TYPE_DEL, REPLY_TYPE_REPLY, REPLY_TYPE_DEL_OWNER)
+    if reply_type not in valid_reply_types:
+        return {"success": False, "error": f"reply_type 值无效：{reply_type}，仅支持 0（删除回复）/1（发表回复）/2（帖子主人删除回复）"}
+
     # 组装 reply（snake_case，交由 _to_camel_keys 转换）
     reply: dict = {
         "post_user": {"id": params["replier_id"]},
@@ -202,6 +194,9 @@ def run(params: dict) -> dict:
     if reply_type == REPLY_TYPE_REPLY:
         if not params.get("content"):
             return {"success": False, "error": "发表回复时必须填写回复内容"}
+        images = params.get("images") or []
+        if len(images) > 1:
+            return {"success": False, "error": f"回复图片数量超出限制：{len(images)} 张（上限 1 张）"}
         reply["create_time"] = str(int(time.time()))
         reply["content"] = params["content"]
         if params.get("target_reply_id"):
@@ -244,7 +239,11 @@ def run(params: dict) -> dict:
 
     if reply_type == REPLY_TYPE_REPLY:
         at_users = params.get("at_users") or []
-        contents = _build_json_reply_contents(params["content"], at_users)
+        # 回复某条回复时，若有 target_user_id + target_user_nick 且 at_users 未手动指定，
+        # 则自动注入，使 UI 显示「回复 @xxx」
+        if not at_users and params.get("target_user_id") and params.get("target_user_nick"):
+            at_users = [{"id": params["target_user_id"], "nick": params["target_user_nick"]}]
+        contents = build_json_contents(params["content"], at_users)
         json_reply_obj: dict = {"contents": contents}
         images = params.get("images") or []
         if images:
@@ -255,13 +254,6 @@ def run(params: dict) -> dict:
 
     try:
         result = call_mcp(TOOL_NAME, arguments)
-        if result.get("isError"):
-            raw = next((c["text"] for c in result.get("content", []) if c.get("type") == "text"), "")
-            import re as _re
-            m = _re.search(r":\s*(\d+)\s*$", raw)
-            code = m.group(1) if m else ""
-            err = f"回复操作失败（错误码 {code}）" if code else (raw or "回复操作失败")
-            return {"success": False, "error": err}
         structured = result.get("structuredContent") or result
         ret_code = structured.get("_meta", {}).get("AdditionalFields", {}).get("retCode", 0)
         if ret_code != 0:
@@ -270,8 +262,10 @@ def run(params: dict) -> dict:
         reply_info = structured.get("reply") or {}
         reply_id = reply_info.get("id") or reply_info.get("replyId") or ""
         create_time = reply_info.get("createTime") or reply_info.get("create_time") or ""
-        data: dict = {"reply_id": reply_id, "create_time": create_time}
+        data: dict = {"回复时间": format_timestamp(create_time)}
         if reply_type == REPLY_TYPE_REPLY:
+            if reply_id:
+                data["reply_id"] = reply_id
             data["content"] = params.get("content", "")
             at_users = params.get("at_users") or []
             if at_users:

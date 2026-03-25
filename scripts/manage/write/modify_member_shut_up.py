@@ -21,7 +21,7 @@ def main():
         params["tiny_id"] = params.pop("member_tinyid")
     if "tinyid" in params and "tiny_id" not in params:
         params["tiny_id"] = params.pop("tinyid")
-    tiny_id = str(parse_positive_int(params.get("tiny_id"), "参数 tiny_id 必须是正整数"))
+    tiny_id = str(parse_positive_int(params.get("tiny_id"), "参数 tiny_id"))
     time_stamp = str(parse_nonnegative_int(params.get("time_stamp"), "参数 time_stamp"))
     result = call_mcp(
         "modify_member_shut_up",

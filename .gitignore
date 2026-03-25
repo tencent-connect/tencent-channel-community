@@ -129,3 +129,4 @@ dmypy.json
 *.swo
 *~
 .DS_Store
+scripts/feed/proto/feed_mcp.proto

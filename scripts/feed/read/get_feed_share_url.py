@@ -4,6 +4,10 @@ Skill: get_feed_share_url
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.FeedReaderMcpSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含翻页规则、字段说明、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -34,7 +38,7 @@ SKILL_MANIFEST = {
             },
             "channel_id": {
                 "type": "string",
-                "description": "板块（子频道）ID，选填"
+                "description": "版块（子频道）ID，选填"
             }
         },
         "required": ["feed_id", "guild_id"]
@@ -79,7 +83,6 @@ def run(params: dict) -> dict:
         return {
             "success": True,
             "data": {
-                "feed_id": feed_id,
                 "share_url": url,
             }
         }

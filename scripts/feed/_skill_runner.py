@@ -36,23 +36,31 @@ class StdinTokenForbidden(Exception):
 
 
 def _read_stdin_json() -> dict | None:
-    """尝试从 stdin 读取 JSON 输入，非 tty 且有数据时返回解析结果；否则返回 None。"""
+    """尝试从 stdin 读取 JSON 输入，非 tty 且有数据时返回解析结果；否则返回 None。
+
+    Raises:
+        StdinTokenForbidden: stdin JSON 含 token 字段。
+        ValueError: stdin 有内容但 JSON 解析失败（畸形输入）。
+    """
     if sys.stdin.isatty():
         return None
     try:
-        ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+        ready, _, _ = select.select([sys.stdin], [], [], 0.0)
         if not ready:
             return None
         raw = sys.stdin.read().strip()
         if not raw:
             return None
-        params = json.loads(raw)
+        try:
+            params = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"stdin 输入不是合法的 JSON：{exc}") from exc
         if not isinstance(params, dict):
-            return None
+            raise ValueError(f"stdin JSON 应为对象（dict），实际为 {type(params).__name__}")
         if "token" in params:
             raise StdinTokenForbidden()
         return params
-    except StdinTokenForbidden:
+    except (StdinTokenForbidden, ValueError):
         raise
     except Exception:
         return None
@@ -61,7 +69,7 @@ def _read_stdin_json() -> dict | None:
 def validate_required(params: dict, manifest: dict) -> "dict | None":
     """
     检查 manifest 中声明的必填参数是否都存在于 params 中。
-    有缺失时返回 {"success": False, "error": "缺少必填信息：频道ID、板块ID"}，
+    有缺失时返回 {"success": False, "error": "缺少必填信息：频道ID、版块ID"}，
     其中字段名从 manifest 的 properties.description 中提取中文描述。
     否则返回 None。
     """
@@ -97,6 +105,11 @@ def run_as_cli(manifest: dict, run_fn):
     except StdinTokenForbidden:
         print(
             json.dumps({"success": False, "error": _FEED_TOKEN_FORBIDDEN}, ensure_ascii=False, indent=2)
+        )
+        sys.exit(1)
+    except ValueError as exc:
+        print(
+            json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2)
         )
         sys.exit(1)
     if stdin_params is not None:
@@ -139,7 +152,7 @@ def run_as_cli(manifest: dict, run_fn):
         )
 
         if choices:
-            kwargs["choices"] = [str(c) for c in choices]
+            kwargs["choices"] = choices  # 保持原始类型，与 type= 转换后的值一致
 
         if ptype == "integer":
             kwargs["type"] = int

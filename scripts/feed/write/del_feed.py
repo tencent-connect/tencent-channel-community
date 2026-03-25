@@ -4,6 +4,10 @@ Skill: del_feed
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -17,7 +21,7 @@ TOOL_NAME = "del_feed"
 
 SKILL_MANIFEST = {
     "name": "del-feed",
-    "description": "删除腾讯频道（QQ Channel）指定帖子，需提供帖子ID、帖子发表时间、频道ID和板块ID。",
+    "description": "删除腾讯频道（QQ Channel）指定帖子，需提供帖子ID、帖子发表时间、频道ID和版块ID。",
     "parameters": {
         "type": "object",
         "properties": {
@@ -26,16 +30,16 @@ SKILL_MANIFEST = {
                 "description": "帖子ID，string，必填"
             },
             "create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，必填"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，必填"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，必填"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，必填"
             }
         },
         "required": ["feed_id", "create_time", "guild_id", "channel_id"]
@@ -92,7 +96,7 @@ def run(params: dict) -> dict:
         if ret_code != 0:
             ret_msg = structured.get("_meta", {}).get("AdditionalFields", {}).get("retMsg", "") or str(ret_code)
             return {"success": False, "error": f"删帖失败（错误码 {ret_code}）：{ret_msg}"}
-        return {"success": True, "data": {"deleted": True, "feed_id": params["feed_id"]}}
+        return {"success": True, "data": {"deleted": True, "message": "帖子删除成功"}}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

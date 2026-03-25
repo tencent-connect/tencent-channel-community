@@ -1,9 +1,13 @@
 """
 Skill: get_feed_detail
-描述: 获取指定帖子的完整详情，包括标题、正文、作者、所属频道及板块信息
+描述: 获取指定帖子的完整详情，包括标题、正文、作者、所属频道及版块信息
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.FeedReaderMcpSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含翻页规则、字段说明、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -13,7 +17,7 @@ from typing import Any
 
 # 将 skills 根目录加入模块搜索路径，以便导入 _mcp_client
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp, get_feed_share_url
+from _mcp_client import call_mcp, get_feed_share_url, format_timestamp
 from _richtext import decode_richtext_dict
 
 # tool 名称（与 proto 中 mcp_rule.name 一致）
@@ -23,7 +27,7 @@ SKILL_MANIFEST = {
     "name": "get-feed-detail",
     "description": (
         "获取指定帖子的完整详情，包括帖子标题、正文内容、作者信息、发布时间、"
-        "评论数、点赞数、所属频道及板块信息、分享链接等。"
+        "评论数、点赞数、所属频道及版块信息、分享链接等。"
     ),
     "parameters": {
         "type": "object",
@@ -33,20 +37,20 @@ SKILL_MANIFEST = {
                 "description": "帖子ID，必填"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写以加速查询"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写以加速查询"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写以加速查询"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写以加速查询"
             },
             "author_id": {
                 "type": "string",
                 "description": "帖子作者ID（发表者用户ID），建议填写以加速查询"
             },
             "create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，建议填写以加速查询"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，建议填写以加速查询"
             }
         },
         "required": ["feed_id"]
@@ -168,7 +172,54 @@ def run(params: dict) -> dict:
         share_url = get_feed_share_url(guild_id, channel_id, feed_id)
         if share_url:
             feed["share_url"] = share_url
-        return {"success": True, "data": structured}
+        # 发布时间格式化（先保留原始值，再格式化，避免 create_time_raw 拿到字符串）
+        raw_create_time = feed.get("createTime") or 0
+        human_create_time = format_timestamp(raw_create_time) if raw_create_time else ""
+
+        # 清洗内部字段：构建白名单输出，过滤 id/author_id/channelInfo 等内部字段
+        poster = feed.get("poster") or {}
+        author_nick = poster.get("nick", "") if isinstance(poster, dict) else ""
+        channel_info = feed.get("channelInfo") or {}
+        channel_name = channel_info.get("name", "") if isinstance(channel_info, dict) else ""
+        guild_name = channel_info.get("guildName", "") if isinstance(channel_info, dict) else ""
+        if channel_name == "帖子广场":
+            channel_name = "频道主页"
+        if channel_name == "帖子":
+            channel_name = "频道主页"
+
+        comment_count = feed.get("commentCount") or feed.get("comment_count") or 0
+        prefer_count = 0
+        total_prefer = feed.get("totalPrefer") or {}
+        if isinstance(total_prefer, dict):
+            prefer_count = total_prefer.get("count") or total_prefer.get("totalCount") or 0
+        elif isinstance(total_prefer, int):
+            prefer_count = total_prefer
+
+        cleaned_feed: dict = {
+            "feed_id":       feed_id,
+            "title":         feed.get("title") or "",
+            "contents":      feed.get("contents") or "",
+            "author":        author_nick,
+            "author_id":     str(poster.get("id", "") or poster.get("tinyId", "") or ""),
+            "create_time":   human_create_time,
+            "create_time_raw": int(raw_create_time),   # 秒级时间戳，供 do_comment/do_reply 使用
+            "comment_count": comment_count,
+            "prefer_count":  prefer_count,
+        }
+        if feed.get("images"):
+            cleaned_feed["images"] = feed["images"]
+        if feed.get("cover"):
+            cleaned_feed["cover"] = feed["cover"]
+        if feed.get("videos"):
+            cleaned_feed["videos"] = feed["videos"]
+        if share_url:
+            cleaned_feed["share_url"] = share_url
+        if channel_name:
+            cleaned_feed["channel_name"] = channel_name
+        if guild_name:
+            cleaned_feed["guild_name"] = guild_name
+
+        return {"success": True, "data": {"feed": cleaned_feed}}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

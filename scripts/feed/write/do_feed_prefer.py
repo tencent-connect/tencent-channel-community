@@ -8,6 +8,10 @@ action 枚举值（PreferAction）：
     3 = 取消点赞
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -43,12 +47,12 @@ SKILL_MANIFEST = {
                 "enum": [1, 3]
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写"
             }
         },
         "required": ["feed_id", "action"]
@@ -89,7 +93,6 @@ def run(params: dict) -> dict:
         action_label = "点赞" if params["action"] == PREFER_ACTION_PREFER else "取消点赞"
         result_data: dict = {
             "action": action_label,
-            "feed_id": params["feed_id"],
         }
         prefer_count = structured.get("preferCount")
         if prefer_count is not None:

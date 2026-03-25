@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """获取频道成员列表，支持分页。
 
-AI 通过 get_num（每页大小，最大50）和 next_page_token 翻页。
+AI 通过 get_num（提示每页大小，最大50）和 next_page_token 翻页。
 底层游标由脚本编解码，AI 只需原样传回 next_page_token 即可翻到下一页。
+每次调用直接透传至远端 MCP 接口，返回接口原生分页结果。
 """
 
 import base64
@@ -12,12 +13,10 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from common import call_mcp, decode_bytes_fields, fail, ok, optional_str, parse_positive_int, read_input  # noqa: E402
+from common import call_mcp, call_mcp_ex, decode_bytes_fields, fail, humanize_timestamps, ok, optional_str, parse_positive_int, read_input  # noqa: E402
 
 PAGE_SIZE_MAX = 50
 PAGE_SIZE_DEFAULT = 20
-# 为了凑满一页 get_num，最多向底层接口翻几轮（底层单次返回数量不可控）
-_MAX_INNER_FETCHES = 10
 _MEMBER_INFO_FILTER = {
     "uint32_need_member_name": 1,
     "uint32_need_nick_name": 1,
@@ -37,12 +36,14 @@ _STRIP_FIELDS = {
     "uint32IsInBlacklist", "uint32_is_in_blacklist",
     "uint32IsInPrivateChannel", "uint32_is_in_private_channel",
     "uint32MemberNameFlag", "uint32_member_name_flag",
+    "uint64Uin", "uint64_uin",
 }
 
 # MemberRole 枚举 → 可读角色名
 # ROLE_NORMAL=0（默认值，接口可能省略该字段）、ROLE_ADMIN=1、ROLE_OWNER=2
 _ROLE_MAP = {
     "ROLE_NORMAL": "成员",
+    "ROLE_NORMAL_MEMBER": "成员",
     "ROLE_ADMIN": "管理员",
     "ROLE_OWNER": "频道主",
     "0": "成员",
@@ -82,8 +83,14 @@ def _clean_member(m: dict) -> dict:
 
 
 def _collect_members(data: dict) -> list:
-    """从 MCP 响应中提取所有成员，基于 uint32Role 标注可读角色。"""
+    """从 MCP 响应中提取所有成员，基于 uint32Role 标注可读角色。
+
+    覆盖两种响应格式：
+    - rptMsgOwnerList / rptMsgAdminList / rptMsgNormalMemberList（GET_ALL）
+    - rptMsgAllMemberList（GET_ROBOT）
+    """
     result = []
+    # 1. 标准三列表（GET_ALL）
     for camel_key, snake_key in _MEMBER_LIST_KEYS:
         members = data.get(camel_key, data.get(snake_key, []))
         if not isinstance(members, list):
@@ -93,13 +100,78 @@ def _collect_members(data: dict) -> list:
             cleaned = _clean_member(m)
             cleaned["role"] = _resolve_role(m, fallback_key)
             result.append(cleaned)
+
+    # 2. rptMsgAllMemberList（GET_ROBOT）
+    for m in data.get("rptMsgAllMemberList", data.get("rpt_msg_all_member_list", [])):
+        cleaned = _clean_member(m)
+        cleaned["role"] = _resolve_role(m, "")
+        result.append(cleaned)
+
     return result
+
+
+def _collect_role_members(data: dict) -> list:
+    """从 roleMemberList 响应中提取成员（带 roleIdIndex 时的响应格式）。"""
+    result = []
+    for group in data.get("roleMemberList", data.get("role_member_list", [])):
+        if not isinstance(group, dict):
+            continue
+        members = group.get("rptMemberList", group.get("rpt_member_list", []))
+        if not isinstance(members, list):
+            continue
+        for m in members:
+            cleaned = _clean_member(m)
+            cleaned["role"] = _resolve_role(m, "")
+            result.append(cleaned)
+    return result
+
+
+def _fetch_role_members_page(guild_id: str, role_pag: dict | None = None) -> tuple[list, dict]:
+    """补充拉取 roleMemberList 中的成员（如 AI 成员），单次单页。
+
+    GET_ALL 标准模式不返回 AI 成员等仅存在于角色分组中的成员，
+    需要额外带 role_id_index 请求来获取。失败时静默返回空列表。
+
+    返回 (members, next_role_pag)，next_role_pag 为空 dict 表示已拉完。
+    """
+    try:
+        args = {
+            "uint64_guild_id": guild_id,
+            "uint32_get_type": "GET_ALL",
+            "uint32_get_num": PAGE_SIZE_MAX,
+            "role_id_index": "2",
+            "msg_member_info_filter": _MEMBER_INFO_FILTER,
+        }
+        if role_pag:
+            if role_pag.get("start_index"):
+                args["uint64_start_index"] = role_pag["start_index"]
+            if role_pag.get("trans_buf"):
+                args["bytes_trans_buf"] = role_pag["trans_buf"]
+
+        raw = call_mcp_ex("get_guild_member_list", args)
+        raw_content = raw.get("structuredContent", raw)
+        next_pag = _extract_pagination(raw_content)
+        decoded = decode_bytes_fields(raw_content)
+        members = _collect_role_members(decoded)
+
+        # 防死循环：游标必须前进
+        if next_pag and role_pag:
+            try:
+                if int(next_pag.get("start_index", 0)) <= int(role_pag.get("start_index", 0)):
+                    next_pag = {}
+            except (TypeError, ValueError):
+                pass
+
+        return members, next_pag
+    except Exception:
+        return [], {}
 
 
 def _extract_pagination(raw_data: dict) -> dict:
     """从 **未 decode** 的 MCP 原始响应中提取翻页游标。
 
     trans_buf 需要保留原始 base64 形式，否则回传时后端无法解析。
+    注意：仅有 trans_buf 而无 start_index 时视为到底（API 会从头返回导致死循环）。
     """
     pag = {}
     for key in ("uint64NextIndex", "uint64_next_index", "nextIndex", "next_index"):
@@ -108,6 +180,9 @@ def _extract_pagination(raw_data: dict) -> dict:
         if val and str(val) != "0":
             pag["start_index"] = str(val)
             break
+    # 没有 start_index 说明已到最后一页，直接返回空 dict
+    if "start_index" not in pag:
+        return {}
     for key in ("bytesTransBuf", "bytes_trans_buf"):
         val = raw_data.get(key)
         if val:
@@ -173,6 +248,8 @@ def main():
     params = read_input()
     guild_id = str(parse_positive_int(params.get("guild_id"), "参数 guild_id"))
     get_type = optional_str(params, "get_type", "GET_ALL") or "GET_ALL"
+    if get_type not in ("GET_ALL", "GET_ROBOT"):
+        fail("get_type 仅支持 GET_ALL（默认）和 GET_ROBOT（查机器人）")
     sort_type = optional_str(params, "sort_type", "ROLE_AND_JOIN_TIME") or "ROLE_AND_JOIN_TIME"
 
     page_size = min(int(params.get("get_num", PAGE_SIZE_DEFAULT)), PAGE_SIZE_MAX)
@@ -183,35 +260,43 @@ def main():
     token = optional_str(params, "next_page_token", "")
     pag = _decode_page_token(token) if token else None
 
-    # ---- 内部循环：向底层接口拉数据，凑满 page_size 个去重成员 ----
+    # 从 token 中分离 role 成员翻页状态
+    # role_pag: None → 已拉完/不需要, {} → 首次拉取, {start_index:...} → 继续拉取
+    # main_done: True → 主列表已拉完，仅继续拉 role 成员
+    if pag is not None:
+        role_pag = pag.pop("role_pag", None)
+        main_done = pag.pop("main_done", False)
+    else:
+        role_pag = {}  # 首页：需要开始拉取 role 成员
+        main_done = False
+
+    # 拉取主成员列表（单页）
     all_members = []
-    fetches = 0
-
-    while len(all_members) < page_size and fetches < _MAX_INNER_FETCHES:
-        remaining = page_size - len(all_members)
-        data = _fetch_one_page(guild_id, get_type, sort_type, remaining, pag)
-        fetches += 1
-
-        members = _collect_members(data)
-        if not members:
-            pag = None  # 没有更多数据了
-            break
-
-        count_before = len(all_members)
-        all_members.extend(members)
-        all_members = _dedup_members(all_members)
-        if len(all_members) - count_before <= 0:
-            pag = None  # 全是重复的，没有更多了
-            break
-
+    next_pag = {}
+    if not main_done:
+        data = _fetch_one_page(guild_id, get_type, sort_type, page_size, pag if pag else None)
         next_pag = data.pop("_pagination_raw", {})
-        if not next_pag:
-            pag = None  # 接口没有返回游标，到底了
-            break
-        pag = next_pag
+        all_members = _collect_members(data)
 
-    # 截断到 page_size
-    all_members = all_members[:page_size]
+    # GET_ALL：补充拉取 roleMemberList（单页），role_pag 非 None 表示仍需拉取
+    next_role_pag = None
+    if get_type == "GET_ALL" and role_pag is not None:
+        role_members, next_role_pag = _fetch_role_members_page(
+            guild_id, role_pag if role_pag else None,
+        )
+        all_members.extend(role_members)
+        if not next_role_pag:
+            next_role_pag = None  # 空 dict → None，表示拉完
+
+    all_members = _dedup_members(all_members)
+
+    # 防御：主游标必须前进，否则视为到底（防止外循环死循环）
+    if next_pag and pag:
+        try:
+            if int(next_pag.get("start_index", 0)) <= int(pag.get("start_index", 0)):
+                next_pag = {}
+        except (TypeError, ValueError):
+            pass
 
     # 按角色拆分
     owners = [m for m in all_members if m.get("role") == "频道主"]
@@ -226,14 +311,22 @@ def main():
         "total_fetched_note": "本页返回的成员数,非频道总人数。频道总人数请使用 get_guild_info 获取",
     }
 
-    # 有下一页时返回 token
-    if pag and len(all_members) >= page_size:
-        output["next_page_token"] = _encode_page_token(pag)
+    has_more_main = bool(next_pag)
+    has_more_role = next_role_pag is not None
+
+    if has_more_main or has_more_role:
+        token_data = dict(next_pag) if next_pag else {}
+        if not has_more_main:
+            token_data["main_done"] = True
+        if has_more_role:
+            token_data["role_pag"] = next_role_pag
+        output["next_page_token"] = _encode_page_token(token_data)
+        output["next_page_token_hint"] = "下一页请传入 next_page_token 参数，值为上面的 next_page_token 原样传回"
         output["has_more"] = True
     else:
         output["has_more"] = False
 
-    ok(output)
+    ok(humanize_timestamps(output))
 
 
 if __name__ == "__main__":

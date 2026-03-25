@@ -5,6 +5,10 @@ MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）。
 
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
+
 上传完整流程（已验证）：
     1. apply_media_upload  — 申请上传，获取 ukey + 上传服务器地址（支持秒传）
     2. POST /sliceupload   — 使用 protobuf 格式分片上传文件数据（Content-Type: application/protobuf）
@@ -46,6 +50,11 @@ import subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from _mcp_client import call_mcp, get_token
 
+try:
+    from _test_env import get_test_cookie
+except ImportError:
+    get_test_cookie = None
+
 TOOL_APPLY_UPLOAD   = "apply_media_upload"
 TOOL_STATUS_SYNC    = "apply_media_upload_status_sync"
 
@@ -56,7 +65,8 @@ TOOL_STATUS_SYNC    = "apply_media_upload_status_sync"
 #    **禁止**使用 ctypes / dlopen / CDLL 等方式加载。
 # ============================================================
 
-_LIBSLICEUPLOAD_CDN = "https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/references/libsliceupload.zip"
+_LIBSLICEUPLOAD_CDN    = "https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/references/libsliceupload.zip"
+_LIBSLICEUPLOAD_SHA256 = "3508e314a6405fba43fb914d55e9ef0c2f025ca8aa26a66eda2863d3e8ef20f2"
 
 
 class _DepsNotInstalled(Exception):
@@ -74,12 +84,22 @@ def _libsliceupload_ready() -> bool:
 
 def _install_libsliceupload() -> str:
     """从 CDN 下载并解压 libsliceupload，返回安装目录。"""
-    import zipfile, tempfile, urllib.request
+    import zipfile, tempfile, urllib.request, hashlib
     bin_dir = _libsliceupload_dir()
     os.makedirs(bin_dir, exist_ok=True)
     tmp_zip = os.path.join(tempfile.gettempdir(), "libsliceupload.zip")
     try:
         urllib.request.urlretrieve(_LIBSLICEUPLOAD_CDN, tmp_zip)
+        # 校验完整性，防止 CDN 被劫持或下载损坏
+        h = hashlib.sha256()
+        with open(tmp_zip, "rb") as f:
+            h.update(f.read())
+        digest = h.hexdigest()
+        if digest != _LIBSLICEUPLOAD_SHA256:
+            raise RuntimeError(
+                f"libsliceupload.zip 校验失败（期望 {_LIBSLICEUPLOAD_SHA256[:16]}...，实际 {digest[:16]}...）。"
+                "文件可能已损坏或来源不可信，已拒绝安装。请检查网络环境后重试。"
+            )
         with zipfile.ZipFile(tmp_zip, "r") as zf:
             zf.extractall(bin_dir)
         for f in os.listdir(bin_dir):
@@ -141,12 +161,12 @@ SKILL_MANIFEST = {
         "type": "object",
         "properties": {
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID（uint64），必填"
+                "type": "string",
+                "description": "频道ID（uint64 字符串），必填"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "子频道ID（uint64），必填"
+                "type": "string",
+                "description": "子频道ID（uint64 字符串），必填"
             },
             "business_type": {
                 "type": "integer",
@@ -210,9 +230,9 @@ def _call_raw(tool_name: str, req_head: dict, upload_req: dict) -> dict:
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}",
     }
-    # 测试环境：附带 Cookie（与 manage / _mcp_client 一致）
-    if os.environ.get("QQ_AI_CONNECT_MCP_ENV", "").strip().lower() == "test":
-        headers["Cookie"] = "qq_env_front=test; qq_env_back=test"
+    cookie = get_test_cookie() if get_test_cookie else None
+    if cookie:
+        headers["Cookie"] = cookie
 
     payload = {
         "jsonrpc": "2.0",
@@ -345,9 +365,10 @@ def _apply_media_upload(business_type: int,
             except Exception:
                 pass
 
-    # 分片大小
+    # 分片大小：协议要求 slice_size = partDataSize / 8
     ctrl = upload_rsp.get("uploadCtrl") or {}
-    part_size = int(ctrl.get("partDataSize", 1048576)) or 1048576
+    part_data_size = int(ctrl.get("partDataSize", 1048576)) or 1048576
+    part_size = part_data_size // 8
 
     # 秒传判断：有 msgInfo 且无 ukey
     is_fast_upload = bool(msg_info) and not ukey
@@ -384,8 +405,10 @@ def _http_slice_upload(file_path: str, upload_info: dict) -> dict:
             [bin_path],
             input=json.dumps(params).encode("utf-8"),
             capture_output=True,
-            timeout=120,
+            timeout=60,
         )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("sliceupload 超时（60s），请检查网络连接后重试")
     except OSError as e:
         raise RuntimeError(
             f"sliceupload 执行失败: {e}。"
@@ -444,9 +467,12 @@ def _apply_media_upload_status_sync(business_type: int,
     upload_status_rsp = content.get("uploadStatusRsp", {}) or content.get("upload_status_sync_rsp", {})
     biz_error_info    = upload_status_rsp.get("bizErrorInfo", {}) or {}
 
+    # 尝试从 status_sync 响应中提取 video_id（.mov 等格式无法从 ext_info3 获取时的兜底）
+    # 响应结构未知，先把完整内容透传出去以便调试
     return {
-        "biz_error_code": biz_error_info.get("errorCode", 0),
-        "biz_error_msg":  biz_error_info.get("errorMsg", ""),
+        "biz_error_code":      biz_error_info.get("errorCode", 0),
+        "biz_error_msg":       biz_error_info.get("errorMsg", ""),
+        "_upload_status_rsp":  upload_status_rsp,   # 完整响应，供 _run_upload 调试用
     }
 
 
@@ -532,7 +558,7 @@ def _run_upload(params: dict, business_type: int) -> dict:
         return {"success": False, "error": f"文件分片上传失败: {e}"}
 
     fileid      = slice_result["fileid"]
-    ext_info3   = slice_result["extend_info"]
+    ext_info3   = slice_result.get("extend_info", b"")   # .mov 等格式服务端不返回 extend_info
     extend_type = upload_info["extend_type"]
 
     # Step 3: 状态同步（携带 ext_info3）
@@ -545,15 +571,16 @@ def _run_upload(params: dict, business_type: int) -> dict:
         return {"success": False, "error": f"状态同步失败: {e}"}
 
     return {"success": True, "data": {
-        "file_uuid":      fileid,
-        "file_md5":       file_md5,
-        "file_sha1":      file_sha1,
-        "file_size":      file_size,
-        "ext_info3":      base64.b64encode(ext_info3).decode() if ext_info3 else "",   # NTPhotoUploadRspExtinfo protobuf 字节（base64）
-        "is_fast_upload": False,
-        "msg_info":       msg_info,
-        "biz_error_code": sync_result["biz_error_code"],
-        "biz_error_msg":  sync_result["biz_error_msg"],
+        "file_uuid":          fileid,
+        "file_md5":           file_md5,
+        "file_sha1":          file_sha1,
+        "file_size":          file_size,
+        "ext_info3":          base64.b64encode(ext_info3).decode() if ext_info3 else "",   # NTPhotoUploadRspExtinfo protobuf 字节（base64）
+        "is_fast_upload":     False,
+        "msg_info":           msg_info,
+        "biz_error_code":     sync_result["biz_error_code"],
+        "biz_error_msg":      sync_result["biz_error_msg"],
+        "_status_sync_rsp":   sync_result.get("_upload_status_rsp", {}),   # 调试：status_sync 完整响应
     }}
 
 

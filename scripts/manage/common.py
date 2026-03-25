@@ -13,6 +13,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 
@@ -24,7 +25,10 @@ DEFAULT_MCPORTER_SERVICE_NAME = "tencent-channel-mcp"
 DOTENV_PATH_ENV = "QQ_AI_CONNECT_DOTENV"
 VERIFY_SCRIPT_REL = "scripts/manage/read/verify_qq_ai_connect_token.py"
 _DOTENV_WARNING = "# QQ AI Connect token — 敏感信息，勿提交到 git。"
-_MCP_ENV = os.environ.get("QQ_AI_CONNECT_MCP_ENV", "").strip().lower()
+try:
+    from _test_env import get_test_cookie
+except ImportError:
+    get_test_cookie = None
 
 
 class MCPUserError(Exception):
@@ -198,6 +202,70 @@ def decode_bytes_fields(obj):
                 out[key] = maybe_b64decode(value)
             else:
                 out[key] = value
+        return out
+    return obj
+
+
+# ── 时间戳人类可读化 ──────────────────────────────────────────────
+_BEIJING_TZ = timezone(timedelta(hours=8))
+
+# 匹配的时间戳字段名（snake_case / camelCase 均覆盖），值为 Unix 秒级整数或数字字符串
+_TIMESTAMP_FIELD_NAMES = {
+    # 加入时间
+    "join_time", "joinTime",
+    "uint32JoinTime", "uint32_join_time",
+    # 创建时间
+    "create_time", "createTime",
+    "uint32CreateTime", "uint32_create_time",
+    # 禁言到期时间
+    "shutup_expire_time", "shutupExpireTime",
+    "uint32ShutupExpireTime", "uint32_shutup_expire_time",
+    "time_stamp", "timeStamp",
+}
+
+
+def _ts_to_human(value, field_name: str) -> str | None:
+    """将 Unix 秒级时间戳转为 'YYYY-MM-DD HH:MM:SS (北京时间)' 字符串。
+
+    返回 None 表示不可转换或无意义。
+    """
+    try:
+        ts = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if ts < 0:
+        return None
+    # 0 在禁言场景表示"未禁言/已解除"
+    if ts == 0:
+        lower = field_name.lower().replace("_", "")
+        if "shutup" in lower or "timestamp" in lower:
+            return "无禁言"
+        return None
+    # 合理范围：2000-01-01 ~ 2100-01-01
+    if ts < 946684800 or ts > 4102444800:
+        return None
+    dt = datetime.fromtimestamp(ts, tz=_BEIJING_TZ)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def humanize_timestamps(obj):
+    """递归遍历 dict/list，对已知时间戳字段追加 '{key}_human' 可读值。
+
+    原始字段保持不变，方便回传给接口；仅新增 _human 后缀字段供 AI 阅读。
+    """
+    if isinstance(obj, list):
+        return [humanize_timestamps(item) for item in obj]
+    if isinstance(obj, dict):
+        out = {}
+        for key, value in obj.items():
+            if isinstance(value, (dict, list)):
+                out[key] = humanize_timestamps(value)
+            else:
+                out[key] = value
+                if key in _TIMESTAMP_FIELD_NAMES:
+                    human = _ts_to_human(value, key)
+                    if human is not None:
+                        out[f"{key}_human"] = human
         return out
     return obj
 
@@ -504,13 +572,10 @@ def _build_mcp_headers() -> dict:
         "Authorization": f"Bearer {get_token()}",
         "X-Forwarded-Method": "POST",
     }
-    if _MCP_ENV == "test":
-        headers["Cookie"] = "qq_env_front=test; qq_env_back=test"
+    cookie = get_test_cookie() if get_test_cookie else None
+    if cookie:
+        headers["Cookie"] = cookie
     return headers
-
-
-def get_mcp_env() -> str:
-    return "test" if _MCP_ENV == "test" else "prod"
 
 
 def call_mcp_ex(tool_name: str, arguments: dict) -> dict:
@@ -561,7 +626,7 @@ def call_mcp_ex(tool_name: str, arguments: dict) -> dict:
         suffix = f" 诊断建议：{hint}" if hint else ""
         raise MCPUserError(
             f"MCP 调用失败，retCode={ret_code}: {err_msg}{suffix}",
-            code=200,
+            code=_ret_code_int(ret_code) or 200,
         )
     return rpc_result
 
@@ -601,6 +666,7 @@ def verify_token_and_mcp_connectivity() -> dict:
             "uint32_country": 1,
             "uint32_province": 1,
             "uint32_city": 1,
+            "uint32_is_guild_author": 1,  # 频道创作者身份
         },
     }
     try:

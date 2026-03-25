@@ -13,6 +13,10 @@ at 支持：
     格式参考：[{"id": "144115219800577368", "nick": "用户昵称"}]
 
 鉴权：get_token() → .env → mcporter（见 scripts/manage/common.py）。
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -21,7 +25,7 @@ import os
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp
+from _mcp_client import call_mcp, format_timestamp, build_json_contents
 
 TOOL_NAME = "do_comment"
 
@@ -48,8 +52,8 @@ SKILL_MANIFEST = {
                 "description": "帖子ID，string，必填"
             },
             "feed_create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "comment_type": {
                 "type": "integer",
@@ -103,48 +107,17 @@ SKILL_MANIFEST = {
                 "description": "评论作者用户ID（删除评论时必填），string"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写"
             }
         },
         "required": ["feed_id", "feed_create_time", "comment_type"]
     }
 }
-
-
-def _build_json_comment_contents(content: str, at_users: list) -> list:
-    """
-    构造 jsonComment.contents 数组。
-    - at_users 中每个用户生成一个 type=2（AT）节点，放在最前面
-    - 若有文本内容则追加一个 type=1（TEXT）节点
-    at_content 结构对应线上抓包（type=1 表示普通用户 AT）：
-        {"type": 2, "at_content": {"user": {"id": "...", "icon": {"iconUrl": ""}, "nick": "..."}, "type": 1}}
-    """
-    contents = []
-    for u in (at_users or []):
-        contents.append({
-            "type": 2,
-            "at_content": {
-                "user": {
-                    "id":   str(u.get("id", "")),
-                    "nick": u.get("nick", ""),
-                },
-                "type": 1,  # AT_TYPE_USER=1
-            }
-        })
-    if content:
-        # at 用户后跟一个空格再接正文（与客户端抓包一致）
-        text = (" " + content) if contents else content
-        contents.append({
-            "text_content": {"text": text},
-            "type": 1,
-            "pattern_id": "",
-        })
-    return contents
 
 
 def run(params: dict) -> dict:
@@ -164,6 +137,11 @@ def run(params: dict) -> dict:
         return err
     comment_type = params["comment_type"]
 
+    # 枚举值校验：防止非法值（如 99）进入 else 分支错误构造删除请求
+    valid_comment_types = (COMMENT_TYPE_DEL, COMMENT_TYPE_COMMENT, COMMENT_TYPE_DEL_OWNER)
+    if comment_type not in valid_comment_types:
+        return {"success": False, "error": f"comment_type 值无效：{comment_type}，仅支持 0（删除评论）/1（发表评论）/2（帖子主人删除评论）"}
+
     # 组装 comment（snake_case，交由 _to_camel_keys 转换）
     comment: dict = {
         "post_user": {"id": ""},
@@ -171,6 +149,9 @@ def run(params: dict) -> dict:
     if comment_type == COMMENT_TYPE_COMMENT:
         if not params.get("content"):
             return {"success": False, "error": "发表评论时必须填写评论内容"}
+        images = params.get("images") or []
+        if len(images) > 1:
+            return {"success": False, "error": f"评论图片数量超出限制：{len(images)} 张（上限 1 张）"}
         comment["create_time"] = str(int(time.time()))
         comment["content"] = params["content"]  # 网关 skill 层据此自动构造 jsonComment
     else:
@@ -204,7 +185,7 @@ def run(params: dict) -> dict:
 
     if comment_type == COMMENT_TYPE_COMMENT:
         at_users = params.get("at_users") or []
-        contents = _build_json_comment_contents(params["content"], at_users)
+        contents = build_json_contents(params["content"], at_users)
         json_comment_obj: dict = {"contents": contents}
         images = params.get("images") or []
         if images:
@@ -217,14 +198,6 @@ def run(params: dict) -> dict:
 
     try:
         result = call_mcp(TOOL_NAME, arguments)
-        if result.get("isError"):
-            raw = next((c["text"] for c in result.get("content", []) if c.get("type") == "text"), "")
-            # 服务端原始格式如：code(返回码...): 10000  →  转为可读提示
-            import re as _re
-            m = _re.search(r":\s*(\d+)\s*$", raw)
-            code = m.group(1) if m else ""
-            err = f"评论操作失败（错误码 {code}）" if code else (raw or "评论操作失败")
-            return {"success": False, "error": err}
         structured = result.get("structuredContent") or result
         ret_code = structured.get("_meta", {}).get("AdditionalFields", {}).get("retCode", 0)
         if ret_code != 0:
@@ -233,8 +206,10 @@ def run(params: dict) -> dict:
         comment_info = structured.get("comment") or {}
         comment_id = comment_info.get("id") or comment_info.get("commentId") or ""
         create_time = comment_info.get("createTime") or comment_info.get("create_time") or ""
-        data: dict = {"comment_id": comment_id, "create_time": create_time}
+        data: dict = {"评论时间": format_timestamp(create_time)}
         if comment_type == COMMENT_TYPE_COMMENT:
+            if comment_id:
+                data["comment_id"] = comment_id
             data["content"] = params.get("content", "")
             at_users = params.get("at_users") or []
             if at_users:

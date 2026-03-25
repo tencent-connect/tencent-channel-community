@@ -10,6 +10,10 @@ like_type 枚举值（DoLikeType）：
     6 = 取消点赞回复（需填 reply_id 和 reply_author_id）
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -51,16 +55,16 @@ SKILL_MANIFEST = {
                 "description": "帖子发表人用户ID，string，必填"
             },
             "feed_create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写"
             },
             "comment_id": {
                 "type": "string",
@@ -101,6 +105,12 @@ def run(params: dict) -> dict:
         return err
     like_type = params["like_type"]
 
+    # 枚举值校验：防止非法值进入后续逻辑触发 KeyError 或意外行为
+    valid_like_types = (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT,
+                        LIKE_TYPE_LIKE_REPLY, LIKE_TYPE_UNLIKE_REPLY)
+    if like_type not in valid_like_types:
+        return {"success": False, "error": f"like_type 值无效：{like_type}，仅支持 3（点赞评论）/4（取消点赞评论）/5（点赞回复）/6（取消点赞回复）"}
+
     if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT):
         if not params.get("comment_id") or not params.get("comment_author_id"):
             return {"success": False, "error": "点赞/取消点赞评论时，必须提供评论ID和评论作者ID"}
@@ -127,18 +137,23 @@ def run(params: dict) -> dict:
             }
         }
 
+    # like.id：评论点赞填 comment_id，回复点赞填 reply_id
+    # 注意：like.id 和 like.status 用于告知服务端操作目标和方向
+    like_target_id = (
+        params["comment_id"] if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT)
+        else params["reply_id"]
+    )
     arguments = {
         "like_type": like_type,  # 对应底层 likeType=2
         "like": {                # 对应底层 like=3（StLike）
-            # like.id：评论点赞填 comment_id，回复点赞填 reply_id
-            "id":     params["comment_id"] if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT)
-                      else params["reply_id"],
+            "id":     like_target_id,
             "status": 1 if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_LIKE_REPLY) else 0,
         },
         "feed": feed,            # 对应底层 feed=4
     }
 
     # comment=6（StComment）：like_type=3/4 时必填，like_type=5/6 时也需填写（提供所属评论信息）
+    # 注意：like_info 中不传 id 字段，避免 retCode=8004 UnmarshalString 错误
     if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT,
                      LIKE_TYPE_LIKE_REPLY,   LIKE_TYPE_UNLIKE_REPLY):
         arguments["comment"] = {                            # 对应底层 comment=6
@@ -147,7 +162,6 @@ def run(params: dict) -> dict:
                 "id": str(params["comment_author_id"]),
             },
             "like_info": {                                  # StComment.likeInfo=8
-                "id":     params["comment_id"],
                 "status": 1 if like_type == LIKE_TYPE_LIKE_COMMENT else 0,
                 "count":  params.get("comment_like_count", 0),
             },
@@ -161,7 +175,6 @@ def run(params: dict) -> dict:
                 "id": str(params["reply_author_id"]),
             },
             "like_info": {                                  # StReply.likeInfo=7
-                "id":     params["reply_id"],
                 "status": 1 if like_type == LIKE_TYPE_LIKE_REPLY else 0,
                 "count":  params.get("reply_like_count", 0),
             },

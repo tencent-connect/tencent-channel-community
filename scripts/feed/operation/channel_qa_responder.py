@@ -5,7 +5,7 @@ Skill: channel-qa-responder
      整理成答案回复给该帖子；无相关内容时礼貌提示。
 
 工作流程：
-    1. 分页拉取频道/板块的帖子列表
+    1. 分页拉取频道/版块的帖子列表
     2. 逐一获取帖子详情，判断是否为求助帖（含提问意图）
     3. 对每个求助帖，提取核心关键词
     4. 调用 get_search_guild_feed 按关键词搜索频道内相关帖子
@@ -113,8 +113,8 @@ SKILL_MANIFEST = {
         "type": "object",
         "properties": {
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，必填"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，必填"
             },
             "bot_user_id": {
                 "type": "string",
@@ -124,10 +124,10 @@ SKILL_MANIFEST = {
                 )
             },
             "channel_id": {
-                "type": "integer",
+                "type": "string",
                 "description": (
-                    "板块（子频道）ID，uint64。"
-                    "填写则只处理该板块帖子；不填则处理整个频道广场"
+                    "版块（子频道）ID，uint64 字符串。"
+                    "填写则只处理该版块帖子；不填则处理整个频道广场"
                 )
             },
             "scan_count": {
@@ -322,6 +322,11 @@ def run(params: dict) -> dict:
         }
     }
     """
+    from _skill_runner import validate_required
+    err = validate_required(params, SKILL_MANIFEST)
+    if err:
+        return err
+
     guild_id    = int(params["guild_id"])
     bot_user_id = str(params["bot_user_id"])
     channel_id  = int(params["channel_id"]) if params.get("channel_id") else None

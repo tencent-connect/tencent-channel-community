@@ -179,14 +179,27 @@ _CONTENT_PARSERS = {
 }
 
 
+def _parse_at_content_combined(data: bytes) -> tuple:
+    """单次迭代解析 AT content，同时提取文本和用户信息。
+    合并 _parse_at_content 与 _parse_at_content_user 的两次独立迭代为一次。
+    返回 (text, user_dict_or_None)。
+    """
+    for fnum, wtype, val in _iter_fields(data):
+        if fnum == 4 and wtype == 2:
+            uid  = _get_str_field(val, 1)
+            nick = _get_str_field(val, 2)
+            text = f"@{nick}" if nick else "@"
+            user = {"id": uid, "nick": nick} if (uid or nick) else None
+            return text, user
+    return "@", None
+
+
 def _parse_richtext_content_node(data: bytes) -> tuple:
     """解析单个 StRichTextContent 节点，返回 (text_fragment, at_user_or_None)。"""
     for fnum, wtype, val in _iter_fields(data):
         if wtype == 2:
-            if fnum == 4:  # AT field，需额外提取 user 信息
-                text = _parse_at_content(val)
-                user = _parse_at_content_user(val)
-                return text, user if user else None
+            if fnum == 4:  # AT field，单次解析同时提取 text 和 user
+                return _parse_at_content_combined(val)
             if fnum in _CONTENT_PARSERS:
                 return _CONTENT_PARSERS[fnum](val), None
     return "", None
@@ -258,44 +271,6 @@ def decode_richtext(b64_str: str) -> dict:
         }
     解析失败时返回 {"text": b64_str, "images": [], "sticker": None, "at_users": []}
     """
-    fallback = {"text": b64_str, "images": [], "sticker": None, "at_users": []}
-    if not b64_str:
-        return {"text": "", "images": [], "sticker": None, "at_users": []}
-    try:
-        raw = base64.b64decode(b64_str)
-    except Exception:
-        return fallback
-
-    parts = []
-    images = []
-    sticker = None
-    at_users = []
-
-    try:
-        for fnum, wtype, val in _iter_fields(raw):
-            if wtype != 2:
-                continue
-            if fnum == 1:   # StRichTextContent
-                text, at_user = _parse_richtext_content_node(val)
-                if text:
-                    parts.append(text)
-                if at_user:
-                    at_users.append(at_user)
-            elif fnum == 2:  # StImage
-                url = _parse_image(val)
-                if url:
-                    images.append(url)
-            elif fnum == 3:  # BaseEmoji sticker
-                sticker = _parse_sticker(val)
-    except Exception:
-        return fallback
-
-    return {
-        "text":     "".join(parts),
-        "images":   images,
-        "sticker":  sticker,
-        "at_users": at_users,
-    }
     fallback = {"text": b64_str, "images": [], "sticker": None, "at_users": []}
     if not b64_str:
         return {"text": "", "images": [], "sticker": None, "at_users": []}

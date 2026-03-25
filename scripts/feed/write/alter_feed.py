@@ -4,22 +4,29 @@ Skill: alter_feed
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含内容长度限制、拆分规则、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
+import hashlib
 import json
+import re
 import sys
 import os
 import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from _mcp_client import call_mcp, get_feed_share_url
+from _feed_common import make_pattern_info, make_contents
 
 TOOL_NAME = "alter_feed"  # 服务端实际注册的 MCP tool name
 
 SKILL_MANIFEST = {
     "name": "alter-feed",
     "description": (
-        "修改腾讯频道（QQ Channel）已有帖子的标题或正文内容，需提供帖子ID、帖子发表时间、频道ID和板块ID。"
+        "修改腾讯频道（QQ Channel）已有帖子的标题或正文内容，需提供帖子ID、帖子发表时间、频道ID和版块ID。"
         "可选择性只修改标题或正文。支持在正文中@用户（at_users参数）。"
         "支持替换图片（file_paths，本地文件自动上传）、替换视频（video_paths，本地文件自动上传）、"
         "删除所有图片（clear_images=true）、删除所有视频（clear_videos=true）。"
@@ -33,16 +40,16 @@ SKILL_MANIFEST = {
                 "description": "帖子ID，string，必填"
             },
             "create_time": {
-                "type": "integer",
-                "description": "帖子发表时间（秒级时间戳），uint64，必填"
+                "type": "string",
+                "description": "帖子发表时间（秒级时间戳），uint64 字符串，必填"
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，必填"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，必填"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，必填"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，必填"
             },
             "feed_type": {
                 "type": "integer",
@@ -133,606 +140,19 @@ SKILL_MANIFEST = {
 }
 
 
-# ── 从 publish_feed.py 复制的上传/patternInfo 工具函数 ──────────────────────
-
-def _decode_varint(data: bytes, pos: int):
-    """从 pos 解码 protobuf varint，返回 (value, new_pos)。"""
-    result = 0
-    shift = 0
-    while pos < len(data):
-        b = data[pos]; pos += 1
-        result |= (b & 0x7F) << shift
-        shift += 7
-        if not (b & 0x80):
-            break
-    return result, pos
-
-
-def _parse_proto_fields(data: bytes) -> dict:
-    """解析 protobuf 字节流，返回 {field_num: value_or_list}。"""
-    fields = {}
-    pos = 0
-    while pos < len(data):
-        tag_val, pos = _decode_varint(data, pos)
-        field_num = tag_val >> 3
-        wire_type = tag_val & 7
-        if wire_type == 0:
-            val, pos = _decode_varint(data, pos)
-        elif wire_type == 2:
-            length, pos = _decode_varint(data, pos)
-            val = data[pos:pos + length]; pos += length
-        elif wire_type == 5:
-            val = data[pos:pos + 4]; pos += 4
-        elif wire_type == 1:
-            val = data[pos:pos + 8]; pos += 8
-        else:
-            break
-        if field_num in fields:
-            existing = fields[field_num]
-            if isinstance(existing, list):
-                existing.append(val)
-            else:
-                fields[field_num] = [existing, val]
-        else:
-            fields[field_num] = val
-    return fields
-
-
-def _get_field(fields: dict, field_num: int, default=None):
-    val = fields.get(field_num, default)
-    if isinstance(val, list):
-        return val[-1]
-    return val
-
-
-def _parse_ext_info3(ext_info3: bytes, hint_width: int = 0,
-                     hint_height: int = 0, file_md5: str = "",
-                     file_size: int = 0, file_uuid: str = "") -> dict:
-    """反序列化图片上传响应 ext_info3，提取 CDN URL。"""
-    if not ext_info3:
-        return {"url": "", "width": hint_width, "height": hint_height,
-                "md5": file_md5, "orig_size": file_size, "task_id": file_uuid or file_md5}
-
-    root = _parse_proto_fields(ext_info3)
-    img_infos_raw = root.get(2)
-    if img_infos_raw is None:
-        img_infos_raw = []
-    elif isinstance(img_infos_raw, bytes):
-        img_infos_raw = [img_infos_raw]
-
-    candidates = []
-    for raw in img_infos_raw:
-        if not isinstance(raw, bytes):
-            continue
-        fi = _parse_proto_fields(raw)
-        img_class  = _get_field(fi, 2, 0)
-        img_width  = _get_field(fi, 4, 0)
-        img_height = _get_field(fi, 5, 0)
-        img_md5_b  = _get_field(fi, 7, b"")
-        img_url_b  = _get_field(fi, 8, b"")
-        img_url = img_url_b.decode("utf-8") if isinstance(img_url_b, bytes) else str(img_url_b)
-        img_md5 = img_md5_b.hex() if isinstance(img_md5_b, bytes) else ""
-        if img_url:
-            candidates.append({
-                "img_class":  img_class if isinstance(img_class, int) else 0,
-                "img_url":    img_url,
-                "img_width":  img_width if isinstance(img_width, int) else 0,
-                "img_height": img_height if isinstance(img_height, int) else 0,
-                "img_md5":    img_md5,
-            })
-
-    if not candidates:
-        return {"url": "", "width": hint_width, "height": hint_height,
-                "md5": file_md5, "orig_size": file_size, "task_id": file_uuid or file_md5}
-
-    chosen = None
-    for c in candidates:
-        if c["img_class"] == 2:
-            chosen = c; break
-    if chosen is None:
-        for c in candidates:
-            if c["img_class"] == 1:
-                chosen = c; break
-    if chosen is None:
-        chosen = candidates[0]
-
-    return {
-        "url":       chosen["img_url"],
-        "width":     chosen["img_width"]  or hint_width,
-        "height":    chosen["img_height"] or hint_height,
-        "md5":       chosen["img_md5"]    or file_md5,
-        "orig_size": file_size,
-        "task_id":   file_uuid or file_md5,
-    }
-
-
-def _parse_video_ext_info3(ext_info3: bytes, hint_width: int = 0,
-                           hint_height: int = 0, hint_duration: int = 0,
-                           file_uuid: str = "", file_md5: str = "") -> dict:
-    """反序列化视频上传响应 ext_info3，提取视频信息。"""
-    default = {
-        "video_id": file_uuid, "url": "",
-        "width": hint_width, "height": hint_height, "duration": hint_duration,
-        "file_uuid": file_uuid, "md5": file_md5,
-    }
-    if not ext_info3:
-        return default
-
-    fields = _parse_proto_fields(ext_info3)
-
-    def _bytes_to_str(v):
-        if isinstance(v, bytes):
-            return v.decode("utf-8", errors="replace")
-        return str(v) if v else ""
-
-    def _zigzag32(n):
-        return (n >> 1) ^ -(n & 1)
-
-    video_id = _bytes_to_str(_get_field(fields, 1, b""))
-    url      = _bytes_to_str(_get_field(fields, 4, b""))
-    retcode_raw = _get_field(fields, 3, 0)
-    retcode = _zigzag32(retcode_raw) if isinstance(retcode_raw, int) else 0
-
-    return {
-        "video_id":  video_id or file_uuid,
-        "url":       url,
-        "width":     hint_width,
-        "height":    hint_height,
-        "duration":  hint_duration,
-        "file_uuid": file_uuid,
-        "md5":       file_md5,
-        "retcode":   retcode,
-    }
-
-
-def _ensure_ffmpeg() -> bool:
-    """检测 ffmpeg 是否可用，不可用时尝试自动安装。返回是否可用。"""
-    import shutil, subprocess, platform, sys
-
-    if shutil.which("ffmpeg"):
-        return True
-
-    system = platform.system().lower()
-    print("[alter_feed] ffmpeg 未找到，尝试自动安装...", file=sys.stderr)
-
-    install_cmds = {
-        "darwin":  ["brew", "install", "ffmpeg"],
-        "linux":   ["sudo", "apt-get", "install", "-y", "ffmpeg"],
-        "windows": ["winget", "install", "--id", "Gyan.FFmpeg", "-e",
-                     "--accept-source-agreements", "--accept-package-agreements"],
-    }
-    cmd = install_cmds.get(system)
-    if not cmd:
-        print(f"[alter_feed] 不支持的平台 ({system})，请手动安装 ffmpeg", file=sys.stderr)
-        return False
-
-    if system == "linux":
-        try:
-            subprocess.run(["sudo", "apt-get", "update", "-y"],
-                           capture_output=True, timeout=120)
-        except Exception:
-            pass
-
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=300)
-        if proc.returncode == 0 and shutil.which("ffmpeg"):
-            print("[alter_feed] ffmpeg 安装成功", file=sys.stderr)
-            return True
-        else:
-            stderr_text = proc.stderr.decode("utf-8", errors="replace")[:500] if proc.stderr else ""
-            print(f"[alter_feed] ffmpeg 安装失败 (returncode={proc.returncode}): {stderr_text}",
-                  file=sys.stderr)
-            return False
-    except FileNotFoundError:
-        fallback = {
-            "darwin":  "请先安装 Homebrew (https://brew.sh)，然后运行: brew install ffmpeg",
-            "linux":   "请运行: sudo apt-get install -y ffmpeg",
-            "windows": "请从 https://ffmpeg.org/download.html 下载安装，或运行: choco install ffmpeg",
-        }
-        print(f"[alter_feed] 自动安装失败，{fallback.get(system, '请手动安装 ffmpeg')}",
-              file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"[alter_feed] ffmpeg 安装异常: {e}", file=sys.stderr)
-        return False
-
-
-def _extract_video_cover(video_path: str) -> str:
-    """用 ffmpeg 提取视频封面帧，ffmpeg 不存在时尝试自动安装。失败返回空字符串。"""
-    import subprocess, tempfile, os
-
-    if not _ensure_ffmpeg():
-        return ""
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-    tmp.close()
-    try:
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-i", video_path, "-ss", "0", "-vframes", "1",
-             "-q:v", "2", tmp.name],
-            capture_output=True, timeout=30,
-        )
-        if proc.returncode == 0 and os.path.getsize(tmp.name) > 0:
-            return tmp.name
-    except Exception:
-        pass
-    try:
-        os.unlink(tmp.name)
-    except Exception:
-        pass
-    return ""
-
-
-def _upload_file_paths(file_paths: list, guild_id: int, channel_id: int,
-                       on_error: str = "abort") -> tuple:
-    """批量上传本地图片，返回 (uploaded_images, error_or_None)。"""
-    import upload_image as _uimg
-
-    uploaded = []
-    for i, entry in enumerate(file_paths):
-        if isinstance(entry, str):
-            entry = {"file_path": entry}
-        fp = entry.get("file_path", "")
-        if not fp:
-            err = f"file_paths[{i}].file_path 为空"
-            if on_error == "abort":
-                return uploaded, err
-            continue
-
-        try:
-            result = _uimg._run_upload(
-                {
-                    "action":        "upload",
-                    "guild_id":      entry.get("guild_id", guild_id),
-                    "channel_id":    entry.get("channel_id", channel_id),
-                    "file_path":     fp,
-                    "width":         entry.get("width", 0),
-                    "height":        entry.get("height", 0),
-                    "business_type": 1002,
-                },
-                business_type=1002,
-            )
-        except _uimg._DepsNotInstalled as exc:
-            return uploaded, {"needs_confirm": True, "error": str(exc)}
-        except Exception as exc:
-            result = {"success": False, "error": str(exc)}
-
-        if not result.get("success"):
-            err = f"file_paths[{i}] ({fp}) 上传失败: {result.get('error', '未知错误')}"
-            if on_error == "abort":
-                return uploaded, err
-            import sys as _sys
-            print(f"[alter_feed] WARN: {err}", file=_sys.stderr)
-            continue
-
-        data = result["data"]
-        file_uuid = data.get("file_uuid", "")
-        ext_info3_raw = data.get("ext_info3") or ""
-        import base64 as _b64
-        ext_info3_bytes = _b64.b64decode(ext_info3_raw) if ext_info3_raw else b""
-        uploaded.append(_parse_ext_info3(
-            ext_info3  = ext_info3_bytes,
-            hint_width  = entry.get("width", 0),
-            hint_height = entry.get("height", 0),
-            file_md5    = data.get("file_md5", ""),
-            file_size   = data.get("file_size", 0),
-            file_uuid   = file_uuid,
-        ))
-
-    return uploaded, None
-
-
-def _upload_video_paths(video_paths: list, guild_id: int, channel_id: int,
-                        on_error: str = "abort") -> tuple:
-    """批量上传本地视频，返回 (uploaded_videos, error_or_None)。"""
-    import upload_image as _uimg
-    import base64 as _b64
-
-    uploaded = []
-    for i, entry in enumerate(video_paths):
-        if isinstance(entry, str):
-            entry = {"file_path": entry}
-        fp = entry.get("file_path", "")
-        if not fp:
-            err = f"video_paths[{i}].file_path 为空"
-            if on_error == "abort":
-                return uploaded, err
-            continue
-
-        try:
-            result = _uimg._run_upload(
-                {
-                    "guild_id":      entry.get("guild_id", guild_id),
-                    "channel_id":    entry.get("channel_id", channel_id),
-                    "file_path":     fp,
-                    "business_type": 1003,
-                },
-                business_type=1003,
-            )
-        except _uimg._DepsNotInstalled as exc:
-            return uploaded, {"needs_confirm": True, "error": str(exc)}
-        except Exception as exc:
-            result = {"success": False, "error": str(exc)}
-
-        if not result.get("success"):
-            err = f"video_paths[{i}] ({fp}) 上传失败: {result.get('error', '未知错误')}"
-            if on_error == "abort":
-                return uploaded, err
-            import sys as _sys
-            print(f"[alter_feed] WARN: {err}", file=_sys.stderr)
-            continue
-
-        data = result["data"]
-        file_uuid = data.get("file_uuid", "")
-        ext_info3_raw = data.get("ext_info3") or ""
-        ext_info3_bytes = _b64.b64decode(ext_info3_raw) if ext_info3_raw else b""
-        video_info = _parse_video_ext_info3(
-            ext_info3     = ext_info3_bytes,
-            hint_width    = entry.get("width", 0),
-            hint_height   = entry.get("height", 0),
-            hint_duration = entry.get("duration", 0),
-            file_uuid     = file_uuid,
-            file_md5      = data.get("file_md5", ""),
-        )
-
-        # 提取视频封面帧并上传为图片
-        cover_url = ""
-        cover_path = _extract_video_cover(fp)
-        if cover_path:
-            try:
-                cover_result = _uimg._run_upload(
-                    {
-                        "guild_id":      entry.get("guild_id", guild_id),
-                        "channel_id":    entry.get("channel_id", channel_id),
-                        "file_path":     cover_path,
-                        "business_type": 1002,
-                    },
-                    business_type=1002,
-                )
-                if cover_result.get("success"):
-                    cdata = cover_result["data"]
-                    cover_ext_raw = cdata.get("ext_info3") or ""
-                    cover_ext_bytes = _b64.b64decode(cover_ext_raw) if cover_ext_raw else b""
-                    cover_img = _parse_ext_info3(cover_ext_bytes, file_uuid=cdata.get("file_uuid", ""),
-                                                  file_md5=cdata.get("file_md5", ""),
-                                                  file_size=cdata.get("file_size", 0))
-                    cover_url = cover_img.get("url", "")
-            except Exception:
-                pass
-            finally:
-                import os as _os
-                try:
-                    _os.unlink(cover_path)
-                except Exception:
-                    pass
-
-        video_info["cover_url"] = cover_url
-
-        import datetime as _dt, random as _random
-        now = _dt.datetime.now()
-        task_id = now.strftime("%Y%m%d%H%M%S") + f"{now.microsecond // 1000:03d}_{_random.randint(10000, 99999)}"
-        video_info["task_id"] = task_id
-
-        uploaded.append(video_info)
-
-    return uploaded, None
-
-
-# ── patternInfo 生成（含图片/视频节点，对齐 publish_feed） ──────────────────
-
-def _make_pattern_info_long(content: str, at_users: list, images: list, videos: list) -> str:
-    """
-    生成长贴(feed_type=2)的 patternInfo JSON。
-    AT节点(type=3)在末段，图片节点(type=6)、视频节点(type=7)追加在末段。
-    """
-    import time as _time
-    ts_ms = int(_time.time() * 1000)
-
-    paragraphs = content.split("\n") if content else [""]
-    blocks = [
-        {
-            "id": str(uuid.uuid4()).upper(),
-            "type": "blockParagraph",
-            "data": [{"status": 0, "widthPercent": 0, "type": 1, "text": "",
-                      "height": 0, "duration": 0, "width": 0}],
-        }
-    ]
-    for i, para in enumerate(paragraphs):
-        block_data = [
-            {
-                "type": 1,
-                "text": para,
-                "props": {"fontWeight": 400, "italic": False, "underline": False},
-            }
-        ]
-        if i == len(paragraphs) - 1:
-            # AT节点
-            for j, u in enumerate(at_users or [], start=1):
-                block_data.append({
-                    "user": {"id": str(u.get("id", "")), "nick": u.get("nick", "")},
-                    "id": str(j),
-                    "status": 0, "widthPercent": 0,
-                    "type": 3,
-                    "height": 0, "duration": 0, "width": 0,
-                })
-            # 图片节点 type=6
-            for idx, img in enumerate(images or []):
-                pic_id = img.get("task_id") or img.get("md5", str(ts_ms))
-                block_data.append({
-                    "type": 6,
-                    "width":        img.get("width", 0),
-                    "height":       img.get("height", 0),
-                    "widthPercent": 100,
-                    "fileId":       pic_id,
-                    "url":          img.get("url", img.get("picUrl", "")),
-                    "id":           str(idx + 1),
-                    "taskId":       pic_id,
-                    "status":       0,
-                    "duration":     0,
-                })
-            # 视频节点 type=7
-            for idx, v in enumerate(videos or []):
-                vid_id = v.get("task_id") or v.get("video_id") or v.get("file_uuid", v.get("fileId", ""))
-                block_data.append({
-                    "type": 7,
-                    "width":        v.get("width", 0),
-                    "height":       v.get("height", 0),
-                    "widthPercent": 100,
-                    "fileId":       vid_id,
-                    "videoId":      vid_id,
-                    "taskId":       vid_id,
-                    "url":          v.get("url", v.get("playUrl", "")),
-                    "id":           str(idx + 1),
-                    "status":       0,
-                    "duration":     v.get("duration", 0),
-                })
-            block_data.append({"status": 0, "widthPercent": 0, "type": 11,
-                               "height": 0, "duration": 0, "width": 0})
-        blocks.append({
-            "id": str(ts_ms + i),
-            "props": {"textAlignment": 0},
-            "type": "blockParagraph",
-            "data": block_data,
-        })
-    return json.dumps(blocks, ensure_ascii=False)
-
-
-def _make_pattern_info_short(content: str, at_users: list, images: list, videos: list) -> str:
-    """
-    生成短贴(feed_type=1)的 patternInfo JSON。
-    图片节点 type=6，视频节点 type=7，各独立 blockParagraph。
-    """
-    block1 = {
-        "id": str(uuid.uuid4()).upper(),
-        "type": "blockParagraph",
-        "data": [{"status": 0, "widthPercent": 0, "type": 1, "text": "",
-                  "height": 0, "duration": 0, "width": 0}],
-    }
-    data2 = [{"props": {"textAlignment": 0}, "status": 0, "widthPercent": 0,
-               "type": 1, "height": 0, "duration": 0, "width": 0}]
-    for i, u in enumerate(at_users or [], start=1):
-        data2.append({
-            "user": {"id": str(u.get("id", "")), "nick": u.get("nick", "")},
-            "id": str(i),
-            "status": 0, "widthPercent": 0,
-            "type": 3,
-            "height": 0, "duration": 0, "width": 0,
-        })
-    data2.append({"status": 0, "widthPercent": 0, "type": 11,
-                   "height": 0, "duration": 0, "width": 0})
-    block2 = {
-        "id": str(uuid.uuid4()).upper(),
-        "props": {"textAlignment": 0},
-        "type": "blockParagraph",
-        "data": data2,
-    }
-    blocks = [block1, block2]
-
-    # 图片节点 type=6，每张独立 blockParagraph
-    for idx, img in enumerate(images or []):
-        pic_id = img.get("task_id") or img.get("md5", "")
-        blocks.append({
-            "id": str(uuid.uuid4()).upper(),
-            "props": {"textAlignment": 0},
-            "type": "blockParagraph",
-            "data": [
-                {
-                    "taskId":       pic_id,
-                    "id":           str(idx + 1),
-                    "fileId":       pic_id,
-                    "status":       0,
-                    "widthPercent": 100,
-                    "type":         6,
-                    "height":       img.get("height", 0),
-                    "duration":     0,
-                    "width":        img.get("width", 0),
-                },
-                {"status": 0, "widthPercent": 0, "type": 11,
-                 "height": 0, "duration": 0, "width": 0},
-            ]
-        })
-
-    # 视频节点 type=7，每个独立 blockParagraph
-    for idx, v in enumerate(videos or []):
-        task_id = v.get("task_id") or v.get("video_id") or v.get("file_uuid", v.get("fileId", ""))
-        blocks.append({
-            "id": str(uuid.uuid4()).upper(),
-            "props": {"textAlignment": 0},
-            "type": "blockParagraph",
-            "data": [
-                {
-                    "taskId":       task_id,
-                    "id":           str(idx + 1),
-                    "fileId":       task_id,
-                    "videoId":      task_id,
-                    "status":       0,
-                    "widthPercent": 100,
-                    "type":         7,
-                    "height":       v.get("height", 0),
-                    "duration":     v.get("duration", 0),
-                    "width":        v.get("width", 0),
-                },
-                {"status": 0, "widthPercent": 0, "type": 11,
-                 "height": 0, "duration": 0, "width": 0},
-            ]
-        })
-
-    return json.dumps(blocks, ensure_ascii=False)
-
-
-def _make_contents(text: str, at_users: list, feed_type: int = 1) -> list:
-    """
-    构造 jsonFeed.contents.contents 数组（对齐线上改帖抓包）。
-    顺序：文本节点在前，at 节点在后（与发帖/评论的 at 在前不同）。
-    at 节点携带 pattern_id（从 "1" 递增），与 patternInfo 里 type=3 节点的 id 对应。
-
-    短贴(feed_type=1)：单个文本节点 + AT 节点列表。
-    长贴(feed_type=2)：按 \\n 拆分为多个文本节点（与 patternInfo blockParagraph 对应），
-                      AT 节点追加在最后一个文本节点之后。
-    """
-    if feed_type == 2:
-        paragraphs = text.split("\n") if text else [""]
-        nodes = []
-        for para in paragraphs:
-            nodes.append({"text_content": {"text": para}, "type": 1, "pattern_id": ""})
-        for i, u in enumerate(at_users or [], start=1):
-            nodes.append({
-                "type": 2,
-                "at_content": {
-                    "user": {
-                        "id":   str(u.get("id", "")),
-                        "nick": u.get("nick", ""),
-                    },
-                    "type": 1,
-                },
-                "pattern_id": str(i),
-            })
-        return nodes
-    else:
-        nodes = []
-        if text:
-            nodes.append({"text_content": {"text": text}, "type": 1, "pattern_id": ""})
-        for i, u in enumerate(at_users or [], start=1):
-            nodes.append({
-                "type": 2,
-                "at_content": {
-                    "user": {
-                        "id":   str(u.get("id", "")),
-                        "nick": u.get("nick", ""),
-                    },
-                    "type": 1,
-                },
-                "pattern_id": str(i),
-            })
-        return nodes
-
+from _upload_util import (
+    _parse_proto_fields, _get_field,
+    _parse_ext_info3, _parse_video_ext_info3,
+    _ensure_ffmpeg, _extract_video_cover,
+    _upload_file_paths, _upload_video_paths,
+    _calculate_content_length,
+)
 
 def _normalize_orig_images(images: list, client_task_id: str, feed_type: int) -> list:
     """
     将原帖透传的图片结构（仅含 picUrl/width/height）规范化为 alter_feed json_feed.images 所需结构。
     与 _build_json_images 逻辑相同，但 picId 从 picUrl hash 派生，避免空 picId。
     """
-    import hashlib
     json_images = []
     for i, img in enumerate(images):
         pic_url = img.get("url", img.get("picUrl", ""))
@@ -852,6 +272,10 @@ def run(params: dict) -> dict:
     channel_id    = params["channel_id"]
     feed_id       = params["feed_id"]
     create_time   = params["create_time"]
+    try:
+        create_time = int(create_time)
+    except (ValueError, TypeError):
+        return {"success": False, "error": "create_time 必须为整数（秒级时间戳）的字符串形式，当前传入的无法转换为整数"}
     feed_type     = params["feed_type"]
     title         = params.get("title", "")
     content       = params.get("content", "")
@@ -867,6 +291,47 @@ def run(params: dict) -> dict:
         return {"success": False, "error": "clear_images 与 file_paths 不可同时使用"}
     if clear_videos and video_paths:
         return {"success": False, "error": "clear_videos 与 video_paths 不可同时使用"}
+
+    # ── 内容限制校验（上传前快速失败）──────────────────────────────────────
+    # 内容不能完全为空（无正文、无图片、无视频，且不是仅清除操作）
+    if not content and not file_paths and not video_paths and not clear_images and not clear_videos:
+        return {"success": False, "error": "内容不能为空，请提供正文内容或图片/视频"}
+
+    # 长贴必须有标题
+    if feed_type == 2 and not title:
+        return {"success": False, "error": (
+            "长贴（feed_type=2）必须提供标题（title 参数）。"
+            "请补充标题后重试，或改为短贴（feed_type=1，无需标题，正文上限 1000 字）。"
+        )}
+
+    # 长短贴正文字数上限（与服务端加权规则一致：汉字=1，英文/数字=0.5）
+    content_len = _calculate_content_length(content) if content else 0.0
+    if feed_type == 1 and content_len > 1000:
+        return {"success": False, "error": (
+            f"短贴正文超过字数限制：{content_len:.0f} 字（上限 1000 字）。"
+            "如需发布更长的内容，请改用长贴（feed_type=2，需提供标题）。"
+        )}
+    if feed_type == 2 and content_len > 10000:
+        return {"success": False, "error": f"长贴正文超过字数限制：{content_len:.0f} 字（上限 10000 字）"}
+
+    # 图片数量上限（仅替换场景，clear_images 时不涉及）
+    if file_paths:
+        img_limit = 18 if feed_type == 1 else 50
+        if len(file_paths) > img_limit:
+            return {"success": False, "error": (
+                f"图片数量超出限制：共 {len(file_paths)} 张"
+                f"（{'短贴' if feed_type == 1 else '长贴'}上限 {img_limit} 张）"
+            )}
+
+    # 视频数量上限（仅替换场景，clear_videos 时不涉及）
+    if video_paths:
+        video_limit = 1 if feed_type == 1 else 5
+        if len(video_paths) > video_limit:
+            return {"success": False, "error": (
+                f"视频数量超出限制：共 {len(video_paths)} 个"
+                f"（{'短贴' if feed_type == 1 else '长贴'}上限 {video_limit} 个）"
+            )}
+    # ────────────────────────────────────────────────────────────────────────
 
     # ── 先拉原帖，透传 images/videos/files，避免改帖时丢失媒体内容 ──
     orig_images = []
@@ -902,7 +367,6 @@ def run(params: dict) -> dict:
     else:
         # 原帖图片补齐 task_id：优先用 picId（服务端真实 ID），fallback 用 picUrl md5
         # picId 由 get_feed_detail 透传，用于 patternInfo 图片节点 taskId/fileId 与 images[].picId 对齐
-        import hashlib as _hashlib
         final_images = []
         for img in orig_images:
             img = dict(img)  # 浅拷贝，避免修改原始数据
@@ -912,7 +376,7 @@ def run(params: dict) -> dict:
                     img["task_id"] = pic_id
                 else:
                     pic_url = img.get("url", img.get("picUrl", ""))
-                    img["task_id"] = _hashlib.md5(pic_url.encode()).hexdigest()[:16] if pic_url else ""
+                    img["task_id"] = hashlib.md5(pic_url.encode()).hexdigest()[:16] if pic_url else ""
             final_images.append(img)
 
     # ── 确定最终视频列表 ──
@@ -931,10 +395,7 @@ def run(params: dict) -> dict:
     client_task_id = str(uuid.uuid4()).upper()
 
     # ── 生成 patternInfo（含图片/视频节点）──
-    if feed_type == 2:
-        pattern_info = _make_pattern_info_long(content, at_users, final_images, final_videos)
-    else:
-        pattern_info = _make_pattern_info_short(content, at_users, final_images, final_videos)
+    pattern_info = make_pattern_info(feed_type, content, at_users, final_images, final_videos)
 
     # ── 构建 json_feed.images / videos ──
     # 新上传的图片用新结构；原帖透传的图片保持原结构不变（服务端兼容）
@@ -976,7 +437,8 @@ def run(params: dict) -> dict:
             "is_square": False,
         },
         "title":    {"contents": [{"type": 1, "textContent": {"text": title}}] if title else []},
-        "contents": {"contents": _make_contents(content, at_users, feed_type)},
+        "contents": {"contents": make_contents(content, at_users, feed_type)},
+        "at_users": at_users,   # 顶层 at_users，与 publish_feed 保持一致，用于详情页解析
         "patternInfo":       pattern_info,
         "tagInfos":          [],
         "recommend_channels": [],
@@ -1025,10 +487,25 @@ def run(params: dict) -> dict:
 
     try:
         result = call_mcp(TOOL_NAME, arguments)
+        # isError=True：错误码/msg 在 content[].text 里
+        if result.get("isError"):
+            raw = next((c["text"] for c in result.get("content", []) if c.get("type") == "text"), "")
+            m = re.search(r"retCode[:\s]+(\d+)[,\s]*(?:msg[:\s]*(.+))?$", raw, re.IGNORECASE)
+            if m:
+                code = m.group(1)
+                msg  = (m.group(2) or "").strip().lstrip("[backend]").strip()
+                err  = f"改帖失败（错误码 {code}）：{msg}" if msg else f"改帖失败（错误码 {code}）"
+            else:
+                err = raw or "改帖失败"
+            return {"success": False, "error": err}
+        # retCode 在 structuredContent._meta 里
         structured = result.get("structuredContent") or {}
-        ret_code = structured.get("_meta", {}).get("AdditionalFields", {}).get("retCode", 0)
+        top_meta = result.get("_meta", {}).get("AdditionalFields", {})
+        sc_meta  = structured.get("_meta", {}).get("AdditionalFields", {})
+        meta     = top_meta if top_meta.get("retCode") else sc_meta
+        ret_code = meta.get("retCode", 0)
         if ret_code != 0:
-            ret_msg = structured.get("_meta", {}).get("AdditionalFields", {}).get("retMsg", "") or str(ret_code)
+            ret_msg = meta.get("errMsg", "") or meta.get("retMsg", "") or str(ret_code)
             return {"success": False, "error": f"改帖失败（错误码 {ret_code}）：{ret_msg}"}
 
         share_url = get_feed_share_url(str(guild_id), str(channel_id), feed_id)
@@ -1050,7 +527,11 @@ def run(params: dict) -> dict:
 
         return {"success": True, "data": result_data}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        m = re.search(r"retCode[=:\s]+(\d+)\)?\s*[:\s]+(?:\[backend\]\s*)?(.+)", str(e))
+        if m:
+            code, msg = m.group(1), m.group(2).strip()
+            return {"success": False, "error": f"改帖失败（错误码 {code}）：{msg}"}
+        return {"success": False, "error": f"改帖失败：{e}"}
 
 
 if __name__ == "__main__":

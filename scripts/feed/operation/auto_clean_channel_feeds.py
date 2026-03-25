@@ -1,6 +1,6 @@
 """
 Skill: auto_clean_channel_feeds
-描述: 扫描频道（或指定板块）的最新帖子，获取每篇帖子的完整标题和正文，
+描述: 扫描频道（或指定版块）的最新帖子，获取每篇帖子的完整标题和正文，
      返回帖子列表供 AI 自主判断是否违规（水帖、广告、外链、二维码、交友、风险等），
      AI 判断后可直接调用 del_feed 删除目标帖子。
 
@@ -9,7 +9,7 @@ MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
 
 工作流程：
-    1. 按 scan_interval 确定时间窗口，分页拉取目标频道/板块的最新帖子
+    1. 按 scan_interval 确定时间窗口，分页拉取目标频道/版块的最新帖子
     2. 获取每篇帖子的完整标题和正文内容
     3. 返回帖子列表，由 AI 根据语义理解自主判断是否需要删除
     4. AI 可根据返回的 feed_id / author_id / create_time 调用 del_feed 执行删除
@@ -38,7 +38,7 @@ DEFAULT_BATCH_SIZE    = 20   # 每页拉取数量
 SKILL_MANIFEST = {
     "name": TOOL_NAME,
     "description": (
-        "扫描频道（或指定板块）最近发布的帖子，获取每篇帖子的标题和正文内容，"
+        "扫描频道（或指定版块）最近发布的帖子，获取每篇帖子的标题和正文内容，"
         "返回帖子列表供 AI 自主判断是否违规（水帖、广告帖、外链帖、二维码帖、交友帖、风险帖等）。"
         "AI 根据返回内容判断后，可调用 del_feed 删除违规帖子。"
         "scan_interval 决定扫描最近多少分钟内发布的帖子；"
@@ -48,14 +48,14 @@ SKILL_MANIFEST = {
         "type": "object",
         "properties": {
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，必填"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，必填"
             },
             "channel_id": {
-                "type": "integer",
+                "type": "string",
                 "description": (
-                    "板块（子频道）ID，uint64，可选。"
-                    "填写则只扫描该板块；不填则扫描整个频道主页"
+                    "版块（子频道）ID，uint64 字符串，可选。"
+                    "填写则只扫描该版块；不填则扫描整个频道主页"
                 )
             },
             "scan_interval": {
@@ -222,6 +222,12 @@ def run(params: dict) -> dict:
         }
     }
     """
+    # ---------- 参数校验 ----------
+    from _skill_runner import validate_required
+    err = validate_required(params, SKILL_MANIFEST)
+    if err:
+        return err
+
     # ---------- 参数解析 ----------
     guild_id      = int(params["guild_id"])
     channel_id    = int(params["channel_id"]) if params.get("channel_id") else None
@@ -299,10 +305,8 @@ def run(params: dict) -> dict:
                     errors.append({"feed_id": feed_id, "error": f"获取详情失败：{e}"})
 
             feeds_result.append({
-                "feed_id":     feed_id,
                 "title":       title,
                 "content":     content,
-                "author_id":   author_id,
                 "create_time": feed_create_time,
             })
 

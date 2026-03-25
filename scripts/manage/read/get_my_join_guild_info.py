@@ -14,6 +14,7 @@ from common import (  # noqa: E402
     call_mcp,
     decode_bytes_fields,
     fetch_guild_share_url,
+    humanize_timestamps,
     ok,
     read_input,
 )
@@ -147,7 +148,7 @@ def main():
         "total_count": len(guilds),
     }
 
-    ok(output)
+    ok(humanize_timestamps(output))
 
 
 if __name__ == "__main__":

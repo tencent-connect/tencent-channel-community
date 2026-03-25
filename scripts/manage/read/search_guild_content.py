@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from common import call_mcp, decode_bytes_fields, fail, ok, optional_str, read_input  # noqa: E402
+from common import call_mcp, decode_bytes_fields, fail, humanize_timestamps, ok, optional_str, read_input  # noqa: E402
 
 TAB_MASK_MAP = {
     "all": "1",
@@ -153,7 +153,7 @@ def main():
                 data["channels"] = [{"guild_id": str(it.get("id", ""))} for it in items]
                 data["share_url_hint"] = f"频道数量较多（{len(items)}个），如需查看某个频道的分享链接，请告诉我具体是哪个"
 
-    ok(data)
+    ok(humanize_timestamps(data))
 
 
 if __name__ == "__main__":

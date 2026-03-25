@@ -7,6 +7,10 @@ Skill: get_next_page_replies
 MCP 服务: trpc.group_pro.open_platform_agent_mcp.GuildDisegtSvr
 
 鉴权：get_token() → .env → mcporter（与频道 manage 相同，见 scripts/manage/common.py）
+
+⚠️  调用前必读：references/feed-reference.md
+    包含翻页规则、字段说明、正确调用流程等关键说明。
+    禁止仅凭此脚本推断用法。
 """
 
 import json
@@ -16,7 +20,7 @@ from typing import Any
 
 # 将 skills 根目录加入模块搜索路径，以便导入 _mcp_client
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp
+from _mcp_client import call_mcp, format_timestamp
 from _richtext import decode_richtext, decode_richtext_dict
 
 # tool 名称（与 proto 中 mcp_rule.name 一致）
@@ -51,12 +55,12 @@ SKILL_MANIFEST = {
                 )
             },
             "guild_id": {
-                "type": "integer",
-                "description": "频道ID，uint64，建议填写（透传至 channel_sign.guild_id）"
+                "type": "string",
+                "description": "频道ID，uint64 字符串，建议填写（透传至 channel_sign.guild_id）"
             },
             "channel_id": {
-                "type": "integer",
-                "description": "板块（子频道）ID，uint64，建议填写（透传至 channel_sign.channel_id）"
+                "type": "string",
+                "description": "版块（子频道）ID，uint64 字符串，建议填写（透传至 channel_sign.channel_id）"
             },
             "page_size": {
                 "type": "integer",
@@ -146,9 +150,14 @@ def run(params: dict) -> dict:
             r = {
                 "id":              reply.get("id", ""),
                 "content":         decoded,
-                "create_time":     reply.get("createTime", ""),
-                "post_user":       reply.get("postUser") or reply.get("post_user") or {},
-                "target_user":     reply.get("targetUser") or reply.get("target_user") or {},
+                "create_time":     format_timestamp(reply.get("createTime", "")),
+                "create_time_raw": int(reply.get("createTime") or 0),    # 秒级，供后续写操作使用
+                "author":          (reply.get("postUser") or reply.get("post_user") or {}).get("nick", ""),
+                "author_id":       str((reply.get("postUser") or reply.get("post_user") or {}).get("id", "") or
+                                       (reply.get("postUser") or reply.get("post_user") or {}).get("tinyId", "") or ""),
+                "target_user_id":  str((reply.get("targetUser") or reply.get("target_user") or {}).get("id", "") or
+                                       (reply.get("targetUser") or reply.get("target_user") or {}).get("tinyId", "") or ""),
+                "target_user":     (reply.get("targetUser") or reply.get("target_user") or {}).get("nick", ""),
                 "target_reply_id": reply.get("targetReplyId") or reply.get("targetReplyID") or reply.get("target_reply_id") or "",
                 "like_count":      (reply.get("likeInfo") or {}).get("count") or 0,
             }

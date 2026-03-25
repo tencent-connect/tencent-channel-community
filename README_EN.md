@@ -12,7 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
@@ -34,16 +34,16 @@
 
 - **Create Channels** - Create public or private themed channels with preview support
 - **Channel Settings** - View or update channel profile, avatar, name, and description
-- **Member Management** - View joined channels, channel members, and sub-channel lists
+- **Member Management** - View joined channels, channel members, and sub-channel lists, with member search by nickname
 - **Search** - Search channels, posts, and authors
-- **Sharing** - Get channel share links
-- **Admin Actions** - Join channels, mute members, or remove members (admin permission required)
+- **Sharing** - Get channel and post share links
+- **Admin Actions** - Join channels with verification pre-check, mute members, or remove members (admin permission required)
 
 ### 📰 Content Management (Posts)
 
 - **Browse Posts** - Browse channel homepage posts or posts in a specific sub-channel with pagination support
-- **Post Details** - View post details, comments, and replies
-- **Publishing & Editing** - Create, edit, and delete posts, including image posts
+- **Post Details** - View post details, comments, and replies, with standalone post share-link retrieval
+- **Publishing & Editing** - Create, edit, and delete posts, including image and video posts
 - **Interactions** - Comment, reply, and like content
 - **Operations Tools** - Content inspection and Q&A auto-reply tools
 
@@ -102,10 +102,12 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 | `get_my_join_guild_info` | Get the list of channels joined by the current account |
 | `get_guild_info` | Get channel profile information |
 | `get_guild_member_list` | Get the channel member list with pagination support |
+| `guild_member_search` | Search channel members by nickname |
 | `get_guild_channel_list` | Get the list of sub-channels |
 | `get_user_info` | Get member profile information |
 | `search_guild_content` | Search channels, posts, authors, or all content |
 | `get_guild_share_url` | Get the channel share link |
+| `get_join_guild_setting` | View channel join settings and verification mode |
 | `preview_theme_private_guild` | Preview channel creation without actually creating it |
 | `create_theme_private_guild` | Create a public or private themed channel |
 | `join_guild` | Join a channel |
@@ -124,8 +126,9 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 | `get-feed-detail` | Get post details |
 | `get-feed-comments` | Get post comments |
 | `get-next-page-replies` | Get the next page of replies |
+| `get-feed-share-url` | Get the share short link for a specified post |
 | `get-search-guild-feed` | Search posts by keyword |
-| `publish-feed` | Publish a new post (text or image) |
+| `publish-feed` | Publish a new post (text, image, or video) |
 | `alter-feed` | Edit a post |
 | `del-feed` | Delete a post |
 | `do-comment` | Add or delete a comment |
@@ -162,8 +165,8 @@ tencent-channel-community/
 │       ├── write/              # Content write operations
 │       └── operation/          # Operations tools
 ├── references/
-│   ├── skill-intro.md          # Feature introduction
-│   ├── manage-reference.md     # Channel management reference
+│   ├── manage-guild.md         # Channel management reference
+│   ├── manage-member.md        # Member management reference
 │   └── feed-reference.md       # Content management reference
 ├── README.md
 └── README_EN.md

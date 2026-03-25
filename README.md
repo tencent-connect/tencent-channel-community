@@ -12,7 +12,7 @@
   简体中文 | <a href="./README_EN.md">English</a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
@@ -35,16 +35,16 @@
 
 - **创建频道** - 创建公开或私密主题频道，支持预览创建效果
 - **频道设置** - 查看/修改频道资料、头像、名称、简介
-- **成员管理** - 查看已加入的频道、频道成员、子频道列表
+- **成员管理** - 查看已加入的频道、频道成员、子频道列表，支持按昵称搜索成员
 - **搜索功能** - 搜索频道、帖子、作者
-- **分享功能** - 获取频道分享链接
-- **管理操作** - 加入频道、禁言/踢人（需管理员权限）
+- **分享功能** - 获取频道和帖子分享链接
+- **管理操作** - 加入频道（支持验证）、禁言/踢人（需管理员权限）
 
 ### 📰 内容管理（帖子）
 
 - **浏览帖子** - 浏览频道主页或指定板块的帖子列表，支持翻页
-- **帖子详情** - 查看帖子详情、评论与回复
-- **发布编辑** - 发帖、改帖、删帖（支持带图发帖）
+- **帖子详情** - 查看帖子详情、评论与回复，支持单独获取帖子分享短链
+- **发布编辑** - 发帖、改帖、删帖（支持图片/视频帖子）
 - **互动功能** - 评论、回复、点赞
 - **运营工具** - 内容巡检、问答类自动回复
 
@@ -103,10 +103,12 @@
 | `get_my_join_guild_info` | 获取当前账号已加入的频道列表 |
 | `get_guild_info` | 获取频道资料 |
 | `get_guild_member_list` | 获取频道成员列表（支持分页） |
+| `guild_member_search` | 按昵称搜索频道成员 |
 | `get_guild_channel_list` | 获取子频道列表 |
 | `get_user_info` | 获取成员资料 |
 | `search_guild_content` | 搜索频道、帖子、作者或全部 |
 | `get_guild_share_url` | 获取频道分享链接 |
+| `get_join_guild_setting` | 查看频道加入设置与验证方式 |
 | `preview_theme_private_guild` | 预览创建频道（不实际创建） |
 | `create_theme_private_guild` | 创建公开/私密主题频道 |
 | `join_guild` | 加入频道 |
@@ -125,8 +127,9 @@
 | `get-feed-detail` | 获取帖子详情 |
 | `get-feed-comments` | 获取帖子评论 |
 | `get-next-page-replies` | 获取下一页回复 |
+| `get-feed-share-url` | 获取指定帖子的分享短链 |
 | `get-search-guild-feed` | 按关键词搜索帖子 |
-| `publish-feed` | 发布新帖子（文字/图片） |
+| `publish-feed` | 发布新帖子（文字/图片/视频） |
 | `alter-feed` | 修改帖子 |
 | `del-feed` | 删除帖子 |
 | `do-comment` | 发表/删除评论 |
@@ -163,8 +166,8 @@ tencent-channel-community/
 │       ├── write/              # 内容写入操作
 │       └── operation/          # 运营工具
 ├── references/
-│   ├── skill-intro.md          # 功能介绍
-│   ├── manage-reference.md     # 频道管理参考
+│   ├── manage-guild.md         # 频道管理参考
+│   ├── manage-member.md        # 成员管理参考
 │   └── feed-reference.md       # 内容管理参考
 ├── README.md
 └── README_EN.md

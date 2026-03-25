@@ -20,6 +20,7 @@ def main():
             "uint32_country": 1,
             "uint32_province": 1,
             "uint32_city": 1,
+            "uint32_is_guild_author": 1,  # 频道创作者身份（有值=是创作者）
         },
     }
 
@@ -37,7 +38,14 @@ def main():
         "get_user_info",
         arguments,
     )
-    ok(decode_bytes_fields(result.get("structuredContent", result)))
+    data = decode_bytes_fields(result.get("structuredContent", result))
+
+    # 显式标注频道创作者身份（远端无值时 protobuf 省略该字段，这里补为 false）
+    user_info = data.get("msgUserInfo")
+    if isinstance(user_info, dict):
+        user_info["isGuildAuthor"] = bool(user_info.get("isGuildAuthor"))
+
+    ok(data)
 
 
 if __name__ == "__main__":
