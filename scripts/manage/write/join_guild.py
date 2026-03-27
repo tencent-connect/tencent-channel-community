@@ -130,6 +130,40 @@ def _build_verification_hint(setting: dict) -> dict:
     return hint
 
 
+def _validate_answers(answers: list, setting: dict) -> str | None:
+    """校验 join_guild_answers 与频道实际设置的匹配度，返回错误信息或 None。"""
+    s = setting.get("setting") or {}
+
+    # QUIZ 类型：校验答题数量
+    quiz = s.get("quiz") or {}
+    quiz_items = quiz.get("items") or []
+    if quiz_items:
+        min_answer = quiz.get("minAnswerNum") or len(quiz_items)
+        if len(answers) < min_answer:
+            return (
+                "该频道测试题要求至少回答 %d 题，但只收到 %d 个答案。"
+                % (min_answer, len(answers))
+            )
+        if len(answers) > len(quiz_items):
+            return (
+                "该频道测试题共 %d 题，但收到了 %d 个答案，数量超出。"
+                % (len(quiz_items), len(answers))
+            )
+        return None
+
+    # MULTI_QUESTION 类型：校验答案数 == 问题数
+    q_items = (s.get("question") or {}).get("items") or []
+    if q_items:
+        if len(answers) != len(q_items):
+            return (
+                "该频道设置了 %d 个问题，但收到了 %d 个答案，数量不匹配。"
+                % (len(q_items), len(answers))
+            )
+        return None
+
+    return None
+
+
 def _do_join(guild_id: str, params: dict) -> dict:
     mcp_args: dict = {"uint64_guild_id": guild_id}
 
@@ -160,27 +194,65 @@ def main():
     has_answers = isinstance(params.get("join_guild_answers"), list) and params["join_guild_answers"]
     has_comment = bool(optional_str(params, "join_guild_comment"))
 
-    if has_answers or has_comment:
-        ok(_do_join(guild_id, params))
-        return
-
+    # ── 始终预检加入设置 ─────────────────────────────────
     setting = _fetch_join_setting(guild_id)
 
+    # 预检失败（网络异常等）→ fallback 直接尝试，不阻断主流程
     if setting is None:
         ok(_do_join(guild_id, params))
         return
 
     join_type = _get_join_type(setting)
 
+    # ── 不允许加入 ───────────────────────────────────────
     if join_type in _DISABLED_JOIN_TYPES:
         fail("当前频道不允许被加入")
         return
 
+    # ── 直接加入（无需验证） ─────────────────────────────
     if join_type in _DIRECT_JOIN_TYPES:
         ok(_do_join(guild_id, params))
         return
 
-    ok(_build_verification_hint(setting))
+    # ── 需要附言的类型（ADMIN_AUDIT / QUESTION 系列） ────
+    if join_type in _COMMENT_TYPES:
+        if has_answers and not has_comment:
+            fail(
+                "该频道的验证方式为「%s」，需要提供 join_guild_comment（附言），"
+                "而非 join_guild_answers。请移除 join_guild_answers 并改用 "
+                "join_guild_comment。" % join_type
+            )
+            return
+        if not has_comment:
+            ok(_build_verification_hint(setting))
+            return
+        ok(_do_join(guild_id, params))
+        return
+
+    # ── 需要答案的类型（MULTI_QUESTION / QUIZ） ──────────
+    if join_type in _ANSWER_TYPES:
+        if has_comment and not has_answers:
+            fail(
+                "该频道的验证方式为「%s」，需要提供 join_guild_answers（答案列表），"
+                "而非 join_guild_comment。请移除 join_guild_comment 并改用 "
+                "join_guild_answers。" % join_type
+            )
+            return
+        if not has_answers:
+            ok(_build_verification_hint(setting))
+            return
+        err = _validate_answers(params["join_guild_answers"], setting)
+        if err:
+            fail(err)
+            return
+        ok(_do_join(guild_id, params))
+        return
+
+    # ── 未知验证类型 fallback ────────────────────────────
+    if not has_answers and not has_comment:
+        ok(_build_verification_hint(setting))
+        return
+    ok(_do_join(guild_id, params))
 
 
 if __name__ == "__main__":

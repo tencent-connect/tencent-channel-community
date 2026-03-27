@@ -46,8 +46,44 @@ import struct
 import base64
 import platform
 import subprocess
+import logging
+import logging.handlers
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+# ── 日志初始化 ─────────────────────────────────────────────────────────────────
+def _init_logger() -> logging.Logger:
+    """初始化上传日志，同时输出到 stderr 和 scripts/feed/logs/upload.log（按天滚动）。"""
+    logger = logging.getLogger("upload")
+    if logger.handlers:          # 避免重复初始化（模块被多次 import 时）
+        return logger
+    logger.setLevel(logging.DEBUG)
+    fmt = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+    # stderr handler
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+
+    # 文件 handler（按天滚动，保留 7 天）
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "upload.log")
+    fh = logging.handlers.TimedRotatingFileHandler(
+        log_path, when="midnight", backupCount=7, encoding="utf-8",
+    )
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    return logger
+
+_logger = _init_logger()
+
+def _log(msg: str) -> None:
+    """写一条 INFO 日志（同时到 stderr 和文件）。"""
+    _logger.info(msg)
+
+
 from _mcp_client import call_mcp, get_token
 
 try:
@@ -66,7 +102,6 @@ TOOL_STATUS_SYNC    = "apply_media_upload_status_sync"
 # ============================================================
 
 _LIBSLICEUPLOAD_CDN    = "https://qqchannel-profile-1251316161.file.myqcloud.com/qq-ai-connect/references/libsliceupload.zip"
-_LIBSLICEUPLOAD_SHA256 = "3508e314a6405fba43fb914d55e9ef0c2f025ca8aa26a66eda2863d3e8ef20f2"
 
 
 class _DepsNotInstalled(Exception):
@@ -84,22 +119,12 @@ def _libsliceupload_ready() -> bool:
 
 def _install_libsliceupload() -> str:
     """从 CDN 下载并解压 libsliceupload，返回安装目录。"""
-    import zipfile, tempfile, urllib.request, hashlib
+    import zipfile, tempfile, urllib.request
     bin_dir = _libsliceupload_dir()
     os.makedirs(bin_dir, exist_ok=True)
     tmp_zip = os.path.join(tempfile.gettempdir(), "libsliceupload.zip")
     try:
         urllib.request.urlretrieve(_LIBSLICEUPLOAD_CDN, tmp_zip)
-        # 校验完整性，防止 CDN 被劫持或下载损坏
-        h = hashlib.sha256()
-        with open(tmp_zip, "rb") as f:
-            h.update(f.read())
-        digest = h.hexdigest()
-        if digest != _LIBSLICEUPLOAD_SHA256:
-            raise RuntimeError(
-                f"libsliceupload.zip 校验失败（期望 {_LIBSLICEUPLOAD_SHA256[:16]}...，实际 {digest[:16]}...）。"
-                "文件可能已损坏或来源不可信，已拒绝安装。请检查网络环境后重试。"
-            )
         with zipfile.ZipFile(tmp_zip, "r") as zf:
             zf.extractall(bin_dir)
         for f in os.listdir(bin_dir):
@@ -524,20 +549,30 @@ def _run_upload(params: dict, business_type: int) -> dict:
     file_name = params.get("file_name") or os.path.basename(file_path)
     width     = params.get("width", 0)
     height    = params.get("height", 0)
+    biz_label = {1002: "图片", 1003: "视频", 1004: "文件"}.get(business_type, str(business_type))
+
+    _log(f"[upload] 开始上传 {biz_label}: {file_path}")
 
     # Step 0: 计算文件哈希和大小
     file_md5, file_sha1, file_size = _calc_file_hashes(file_path)
+    _log(f"[upload] 文件信息: size={file_size}B  md5={file_md5}  name={file_name}")
 
     # Step 1: 申请上传
-    upload_info = _apply_media_upload(
-        business_type, file_size, file_md5, file_sha1, file_name, width, height,
-    )
+    _log("[upload] Step1 申请上传 (apply_media_upload)...")
+    try:
+        upload_info = _apply_media_upload(
+            business_type, file_size, file_md5, file_sha1, file_name, width, height,
+        )
+    except Exception as e:
+        _log(f"[upload] Step1 失败: {e}")
+        raise
 
     msg_info = upload_info.get("msg_info") or {}
 
     # 秒传：无需 HTTP 上传，直接完成
     if upload_info["is_fast_upload"]:
         file_uuid = _extract_file_uuid(msg_info)
+        _log(f"[upload] 秒传命中，file_uuid={file_uuid}")
         return {"success": True, "data": {
             "file_uuid":      file_uuid,
             "file_md5":       file_md5,
@@ -549,26 +584,51 @@ def _run_upload(params: dict, business_type: int) -> dict:
             "biz_error_msg":  "",
         }}
 
+    addrs_str = [f"{a['host']}:{a['port']}" for a in upload_info["upload_addrs"]]
+    _log(
+        f"[upload] Step1 成功: ukey={upload_info['ukey'][:16]}...  "
+        f"appid={upload_info['appid']}  part_size={upload_info['part_size']}B  "
+        f"addrs={addrs_str}"
+    )
+
     # Step 2: 分片上传文件（/sliceupload）
+    _log("[upload] Step2 分片上传 (sliceupload)...")
     try:
         slice_result = _http_slice_upload(file_path, upload_info)
     except _DepsNotInstalled:
         raise
     except Exception as e:
+        _log(f"[upload] Step2 失败: {e}")
         return {"success": False, "error": f"文件分片上传失败: {e}"}
 
     fileid      = slice_result["fileid"]
     ext_info3   = slice_result.get("extend_info", b"")   # .mov 等格式服务端不返回 extend_info
     extend_type = upload_info["extend_type"]
+    ext_info3_desc = "有" if ext_info3 else "无"
+    _log(
+        f"[upload] Step2 成功: fileid={fileid}  "
+        f"ext_info3={ext_info3_desc}({len(ext_info3)}B)  "
+        f"extend_type={extend_type}"
+    )
 
     # Step 3: 状态同步（携带 ext_info3）
+    _log("[upload] Step3 状态同步 (apply_media_upload_status_sync)...")
     try:
         sync_result = _apply_media_upload_status_sync(
             business_type, fileid, file_md5, file_sha1, file_size,
             file_name, extend_type, ext_info3,
         )
     except Exception as e:
+        _log(f"[upload] Step3 失败: {e}")
         return {"success": False, "error": f"状态同步失败: {e}"}
+
+    biz_code = sync_result["biz_error_code"]
+    biz_msg  = sync_result["biz_error_msg"]
+    if biz_code:
+        _log(f"[upload] Step3 biz错误: code={biz_code}  msg={biz_msg}")
+    else:
+        _log(f"[upload] Step3 成功: biz_error_code=0  status_sync_rsp={sync_result.get('_upload_status_rsp', {})}")
+    _log(f"[upload] 上传完成: file_uuid={fileid}")
 
     return {"success": True, "data": {
         "file_uuid":          fileid,

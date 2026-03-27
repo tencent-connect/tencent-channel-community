@@ -443,8 +443,6 @@ def run(params: dict) -> dict:
             results.append({**base_record, "reply_result": "dry_run", "reply_detail": "演习模式，未发布评论"})
             continue
 
-        # --- 发表评论（发布前稍作延迟，避免触发限流）---
-        time.sleep(2)
         try:
             comment_info = _post_comment(
                 feed_id=feed_id,

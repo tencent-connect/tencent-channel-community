@@ -16,6 +16,7 @@
 | 查看子频道（版块）列表 | `get_guild_channel_list.py` | 只查版块，不查帖子 | 缺 `guild_id` → 先 `get_my_join_guild_info` |
 | 搜频道 / 搜帖子 / 搜作者 | `search_guild_content.py` | `scope`：`channel`（默认）/ `feed` / `author` / `all` | 无 |
 | 获取频道分享链接 | `get_guild_share_url.py` | 只处理频道分享，不处理帖子分享 | 缺 `guild_id` → 先查频道 |
+| 解析频道分享链接 | `get_share_info.py` | 仅限 `pd.qq.com` 域名的频道分享链接 | 无 |
 | 查看频道加入设置（验证方式 / 问题） | `get_join_guild_setting.py` | 只查设置，不加入 | 缺 `guild_id` → 先搜索或查频道 |
 | 加入频道 | `join_guild.py` | 内部自动预检加入设置；需要验证时返回提示而非报错（见「加入频道规则」） | 缺 `guild_id` → 先搜索或查频道 |
 | 修改频道头像 | `upload_guild_avatar.py` | 需要本地图片路径 | 缺 `guild_id` → 先查频道 |
@@ -48,6 +49,8 @@
 - **禁止** 在业务 stdin JSON 中传 `token`
 - 所有 manage 工具通过 **stdin JSON** 传入业务参数
 - `guild_id` 等标识符推荐用 **字符串** 传参，避免大整数精度问题
+
+> **时间戳可读化**：所有返回数据中的已知时间戳字段（`joinTime`、`createTime`、`shutupExpireTime`、`timeStamp` 及其 snake_case / uint32 变体）会自动附带 `{字段名}_human` 后缀的可读值（北京时间 `YYYY-MM-DD HH:MM:SS`）。禁言相关时间戳为 `0` 时显示 `"无禁言"`。向用户展示时间时直接使用 `_human` 字段，无需自行转换原始时间戳。
 
 ### 配置 token
 
@@ -117,17 +120,24 @@ mcporter config add tencent-channel-mcp \
 
 ### 脚本处理流程
 
-1. **直接加入**（`UNKNOWN` / `DIRECT` / 无设置）→ 直接加入，返回结果 + 分享链接
-2. **不允许加入**（`DISABLE`）→ `fail("当前频道不允许被加入")`
-3. **需要附言**（`ADMIN_AUDIT` / `QUESTION` / `QUESTION_WITH_ADMIN_AUDIT`）且调用者未传 `join_guild_comment` → 返回 `action=need_verification`，提示 AI 向用户收集附言
-4. **需要答案**（`MULTI_QUESTION` / `QUIZ`）且调用者未传 `join_guild_answers` → 返回 `action=need_verification`，提示 AI 向用户收集答案
-5. AI 收到 `need_verification` 后，应将问题 / 验证要求展示给用户，收集后 **再次调用** `join_guild.py` 并传入对应参数
-6. 调用者已提供 `join_guild_answers` 或 `join_guild_comment` → 直接提交加入请求
+脚本 **始终** 先预检加入设置，再根据实际验证类型校验 AI 传参的合法性：
 
-> 预检失败（网络异常等）时会 fallback 直接尝试加入，不阻断主流程。
+1. **预检失败**（网络异常等）→ fallback 直接尝试加入，不阻断主流程
+2. **不允许加入**（`DISABLE`）→ `fail("当前频道不允许被加入")`
+3. **直接加入**（`UNKNOWN` / `DIRECT` / 无设置）→ 直接加入，返回结果 + 分享链接
+4. **需要附言**（`ADMIN_AUDIT` / `QUESTION` / `QUESTION_WITH_ADMIN_AUDIT`）：
+   - 传了 `join_guild_answers` 却没传 `join_guild_comment` → **fail：参数类型错误**
+   - 未传 `join_guild_comment` → 返回 `action=need_verification`，提示 AI 向用户收集附言
+   - 已传 `join_guild_comment` → 提交加入请求
+5. **需要答案**（`MULTI_QUESTION` / `QUIZ`）：
+   - 传了 `join_guild_comment` 却没传 `join_guild_answers` → **fail：参数类型错误**
+   - 未传 `join_guild_answers` → 返回 `action=need_verification`，提示 AI 向用户收集答案
+   - 已传 `join_guild_answers` → **校验答案数量**（与频道设置的问题数匹配）→ 不匹配则 **fail** → 匹配则提交加入请求
+6. AI 收到 `need_verification` 后，应将问题 / 验证要求展示给用户，收集后 **再次调用** `join_guild.py` 并传入对应参数
 
 ### ⚠️ 硬规则
 
+- 脚本会 **始终预检** 加入设置并校验传参——即使 AI 传了 `join_guild_answers` 或 `join_guild_comment`，也会先检查参数是否与频道实际验证类型匹配，**不匹配直接报错**
 - 收到 `action=need_verification` 时，**必须**先将问题/验证要求展示给用户、收集到附言或答案后，才能再次调用 `join_guild`
 - **禁止**在未获得用户提供的 `join_guild_comment` 或 `join_guild_answers` 的情况下重复调用 `join_guild`
 - **禁止**自行编造附言或答案代替用户作答
@@ -138,7 +148,7 @@ mcporter config add tencent-channel-mcp \
 
 - `get_my_join_guild_info` 返回按角色分类的三类频道：`created_guilds`（频道主）、`managed_guilds`（管理员）、`joined_guilds`（成员）；用户说"我的频道"时展示 **全部三类**
 - 前 **10** 个频道自动补取分享短链，超过 10 个不自动补链
-- `search_guild_content` 支持 `scope`：`channel`（默认）/ `feed` / `author` / `all`，同时支持中文别名
+- `search_guild_content` 支持 `scope`：`channel`（默认）/ `feed` / `author` / `all`，同时支持中文别名。⚠️ 此处 `author`（作者）指「频道创作者 / 频道作者」，是同一身份概念；**不是**帖子的发布人（帖子作者），也**不是**频道的创建人（频道主）
 - 搜频道结果 ≤10 时自动补取资料和短链；>10 时仅返回 `guild_id` 列表 + 提示
 - 搜帖子返回后，默认补充频道名称与分享短链，展示时包含帖子所属频道信息
 - 频道分享链接固定短链格式
@@ -181,8 +191,6 @@ mcporter config add tencent-channel-mcp \
 
 每个频道含 `guildUserInfo.uint32Role`（`0`=成员、`1`=管理员、`2`=频道主），映射为 `msgGuildInfo.role`。
 
-> **时间戳可读化**：返回中的时间戳字段（如 `createTime` / `uint32_create_time` 等）会自动附带 `{字段名}_human` 可读值（北京时间 `YYYY-MM-DD HH:MM:SS`），向用户展示时直接使用 `_human` 字段。
-
 > 用户说"我的频道"时展示**全部三类**；仅当明确说"我创建的"或"我管理的"时才只展示对应分类。
 
 ### get_guild_info
@@ -202,7 +210,7 @@ mcporter config add tencent-channel-mcp \
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `keyword` | string | 是 | 搜索关键词 |
-| `scope` | string | 否 | `3`=频道（默认）、`4`=帖子 |
+| `scope` | string | 否 | `channel` / `3`=频道（默认）、`feed` / `4`=帖子、`author` / `5`=作者（频道创作者）、`all` / `1`=全部；支持中文别名（`频道`/`帖子`/`作者`/`全部`） |
 | `rank_type` | string | 否 | 默认 `CHANNEL_RANK_TYPE_SMART` |
 | `session_info` | string | 否 | 翻页上下文 |
 | `disable_correction_query` | boolean | 否 | 是否关闭搜索纠错，默认 `false` |
@@ -214,6 +222,22 @@ mcporter config add tencent-channel-mcp \
 | `guild_id` | string | 是 | 频道 ID |
 
 固定返回短链。只处理**频道分享**，不处理帖子分享。
+
+### get_share_info
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `url` | string | 是 | 分享链接（短链或长链均可） |
+
+解析频道分享链接，返回对应的频道信息。短链直接传入，长链脚本自动提取 `inviteCode` / `contentID`。
+
+**路由判断**：符合以下任一格式的链接才是腾讯频道分享链接，应调用本工具：
+- 短链：`https://pd.qq.com/s/<code>`（路径以 `/s/` 开头）
+- 长链：`https://pd.qq.com/...?...&inviteCode=<code>`（query 参数中含 `inviteCode`）
+
+不满足上述格式的链接（包括 `pd.qq.com` 下的其他页面）均不应调用本工具。
+
+返回 `shareGuildInfo`（含 `guildId` + `guildName`）。如需获取频道详细资料（头像、简介、成员数等），可用返回的 `guildId` 再调用 `get_guild_info`。
 
 ### get_join_guild_setting
 

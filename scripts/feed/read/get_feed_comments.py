@@ -28,7 +28,8 @@ SKILL_MANIFEST = {
     "description": (
         "获取指定帖子的评论列表，支持按时间正序或倒序排列，支持翻页。"
         "返回每条评论的内容、作者昵称、时间、点赞数，以及每条评论的前几条回复预览。"
-        "当评论的 has_more_replies=true 时，可调用 get_next_page_replies 加载更多回复。"
+        "当评论的 has_more_replies=true 时，该评论对象里的 attach_info 字段即为调用 get_next_page_replies 所需的翻页游标，"
+        "直接将其传入 get_next_page_replies 的 attach_info 参数即可，无需额外请求。"
     ),
     "parameters": {
         "type": "object",
@@ -52,6 +53,10 @@ SKILL_MANIFEST = {
             "rank_type": {
                 "type": "integer",
                 "description": "评论排序：1=时间正序，2=时间倒序；默认0"
+            },
+            "reply_list_num": {
+                "type": "integer",
+                "description": "每条评论预加载的回复数量，默认1，最大10。适当增大可减少后续调用 get_next_page_replies 的次数"
             },
             "attach_info": {
                 "type": "string",

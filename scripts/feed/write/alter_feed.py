@@ -163,7 +163,7 @@ def _normalize_orig_images(images: list, client_task_id: str, feed_type: int) ->
         json_images.append({
             "picId":           pic_id,
             "picUrl":          pic_url,
-            "pattern_id":      str(i + 1),
+            "pattern_id":      pic_id or str(i + 1),
             "width":           img.get("width", 0),
             "height":          img.get("height", 0),
             "imageMD5":        "",
@@ -187,7 +187,7 @@ def _build_json_images(images: list, client_task_id: str, feed_type: int) -> lis
         json_images.append({
             "picId":           task_id or img.get("picId", ""),
             "picUrl":          "/guildFeedPublish/localMedia/%s/%s/thumb.jpg" % (client_task_id, task_id) if feed_type == 1 else pic_url,
-            "pattern_id":      str(i + 1),
+            "pattern_id":      task_id or img.get("picId", "") or str(i + 1),
             "width":           img.get("width", 0),
             "height":          img.get("height", 0),
             "imageMD5":        "",
@@ -213,7 +213,7 @@ def _build_json_videos(videos: list, client_task_id: str) -> list:
         orig_cover = v.get("cover") or {}
         cover_pic_id  = orig_cover.get("picId") or task_id
         cover_pic_url = orig_cover.get("picUrl") or (
-            "/guildFeedPublish/localMedia%s/%s/thumb_%s.jpg" % (
+            "/guildFeedPublish/localMedia/%s/%s/thumb_%s.jpg" % (
                 client_task_id, task_id, str(uuid.uuid4()).upper()
             )
         )
@@ -457,13 +457,17 @@ def run(params: dict) -> dict:
         "third_bar": {"id": "", "button_scheme": "", "content_scheme": ""},
     }
 
-    # client_content：新上传图片/视频的 CDN 信息（原帖透传时不需要）
+    # client_content：新上传图片/视频的 CDN 信息；长贴时还必须写入 patternInfo
+    # 长贴（feed_type=2）客户端编辑器依赖 client_content.patternInfo 渲染富文本正文，
+    # 即使没有新上传的媒体文件也必须传入，否则编辑器正文显示空白。
     arguments: dict = {
         "feed":      {},
         "json_feed": json.dumps(json_feed_obj, ensure_ascii=False),
     }
-    if has_new_images or has_new_videos:
+    if has_new_images or has_new_videos or feed_type == 2:
         client_content: dict = {}
+        if feed_type == 2:
+            client_content["patternInfo"] = pattern_info  # 长贴必须写入，客户端编辑器依赖此字段渲染富文本
         if has_new_images:
             client_content["clientImageContents"] = [
                 {

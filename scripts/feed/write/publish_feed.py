@@ -55,14 +55,16 @@ SKILL_MANIFEST = {
                 "type": "array",
                 "description": (
                     "正文中被@的用户列表，选填。"
-                    "系统会在正文内容最前面自动插入对应的 @用户 节点。"
-                    "每项需包含 id（用户ID）和 nick（用户昵称）字段。"
+                    "⚠️ 填写前必须先调用 guild_member_search 或 get_guild_member_list 查到目标用户的 tiny_id（字段 uint64Tinyid），"
+                    "再将 tiny_id 填入 id 字段、昵称填入 nick 字段。"
+                    "严禁使用 QQ 号、猜测值或任何非 tiny_id 的值；"
+                    "严禁在 content 正文中手动拼写「@昵称」文本来模拟 at——那只是纯文字，不产生系统级 at 通知效果。"
                     "示例：[{\"id\": \"144115219800577368\", \"nick\": \"张三\"}]"
                 ),
                 "items": {
                     "type": "object",
                     "properties": {
-                        "id":   {"type": "string", "description": "用户ID"},
+                        "id":   {"type": "string", "description": "用户 tiny_id（uint64Tinyid），必须通过 guild_member_search 或 get_guild_member_list 查询获取，严禁填 QQ 号或猜测值"},
                         "nick": {"type": "string", "description": "用户昵称"}
                     },
                     "required": ["id", "nick"]
@@ -162,8 +164,8 @@ def run(params: dict) -> dict:
         - feed_type=1（短贴，无标题）或 feed_type=2（长贴，有标题）
         - 所有 key 使用 snake_case（对齐线上客户端抓包）
         - patternInfo：富文本块结构，按换行拆分段落
-      - images[].pattern_id 与 patternInfo 中 type=6 节点的 id 字段一一对应（使用 "1","2",... 递增序号）
-      - images[].picUrl 短贴时填本地占位路径，长贴时留空；CDN URL 通过 client_content 传递
+      - images[].pattern_id / picId 与 patternInfo 中 type=6 节点的 id/taskId 一一对应（均使用 task_id）
+      - images[].picUrl 短贴时填本地占位路径（对齐线上客户端），长贴时填真实 CDN URL
     """
     from _skill_runner import validate_required
     err = validate_required(params, SKILL_MANIFEST)
@@ -330,15 +332,15 @@ def run(params: dict) -> dict:
     # 选择 patternInfo 生成方式
     pattern_info = make_pattern_info(feed_type, content, at_users, images, videos)
 
-    # images[] 数组：pattern_id 使用递增序号 "1","2",...
-    # 短贴时 picUrl 填本地占位路径（对齐线上客户端），长贴时留空
+    # images[] 数组：pattern_id / picId 与 patternInfo type=6 节点的 id/taskId 保持一致（均为 task_id）
+    # 短贴时 picUrl 填本地占位路径（对齐线上客户端），长贴时填真实 CDN URL
     json_images = []
     for i, img in enumerate(images):
         task_id = img.get("task_id") or img.get("md5", "")
         json_images.append({
             "picId":          task_id,
-            "picUrl":         "/guildFeedPublish/localMedia/%s/%s/thumb.jpg" % (client_task_id, task_id) if feed_type == 1 else "",
-            "pattern_id":     str(i + 1),
+            "picUrl":         "/guildFeedPublish/localMedia/%s/%s/thumb.jpg" % (client_task_id, task_id) if feed_type == 1 else img.get("url", img.get("picUrl", "")),
+            "pattern_id":     task_id,
             "width":          img.get("width", 0),
             "height":         img.get("height", 0),
             "imageMD5":       "",
@@ -384,7 +386,7 @@ def run(params: dict) -> dict:
             {
                 "cover": {
                     "picId":          v.get("task_id") or v.get("file_uuid", ""),
-                    "picUrl":         "/guildFeedPublish/localMedia%s/%s/thumb_%s.jpg" % (
+                    "picUrl":         "/guildFeedPublish/localMedia/%s/%s/thumb_%s.jpg" % (
                                           client_task_id,
                                           v.get("task_id") or v.get("file_uuid", ""),
                                           str(uuid.uuid4()).upper()
@@ -445,7 +447,10 @@ def run(params: dict) -> dict:
         },
     }
 
-    # client_content：图片 + 视频 CDN 信息
+    # client_content：图片 + 视频 CDN 信息（透传给 MCP）
+    # 对齐真实客户端格式：client_content 只含 clientImageContents / clientVideoContents，
+    # 不包含 patternInfo——编辑器从 jsonFeed.patternInfo 读取富文本结构，
+    # 写入 client_content.patternInfo 会被客户端忽略且与真实请求不符。
     client_content = {}
     if client_image_contents:
         client_content["clientImageContents"] = client_image_contents

@@ -214,12 +214,15 @@ _TIMESTAMP_FIELD_NAMES = {
     # 加入时间
     "join_time", "joinTime",
     "uint32JoinTime", "uint32_join_time",
+    "uint64JoinTime", "uint64_join_time",
     # 创建时间
     "create_time", "createTime",
     "uint32CreateTime", "uint32_create_time",
+    "uint64CreateTime", "uint64_create_time",
     # 禁言到期时间
     "shutup_expire_time", "shutupExpireTime",
     "uint32ShutupExpireTime", "uint32_shutup_expire_time",
+    "uint64ShutupExpireTime", "uint64_shutup_expire_time",
     "time_stamp", "timeStamp",
 }
 

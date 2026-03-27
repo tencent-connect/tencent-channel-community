@@ -83,8 +83,8 @@ def _parse_ext_info3(ext_info3: bytes, hint_width: int = 0,
       field 7 = bytes  img_md5
       field 8 = string img_url    ← 正确的 CDN URL (channelr.photo.store.qq.com/psc?...)
 
-    选择策略：优先取 img_class=2（原图），其次 img_class=1（大图），最后取任意有 img_url 的。
-    返回: {"url", "width", "height", "md5", "orig_size", "task_id"}
+    选择策略：仅使用 channelr.photo.store.qq.com 域名的条目，优先取 img_class=2（原图），其次 img_class=1（大图），最后取任意符合条件的。
+    无符合条件的条目时返回空 url。
     """
     if not ext_info3:
         return {"url": "", "width": hint_width, "height": hint_height,
@@ -122,6 +122,14 @@ def _parse_ext_info3(ext_info3: bytes, hint_width: int = 0,
                 "img_md5":    img_md5,
             })
 
+    if not candidates:
+        return {"url": "", "width": hint_width, "height": hint_height,
+                "md5": file_md5, "orig_size": file_size, "task_id": file_uuid or file_md5}
+
+    # 只有 channelr.photo.store.qq.com 是可公开访问的图片 CDN 域名。
+    # multimedia.nt.qq.com.cn 等为 NT 协议内网临时地址，外网不可访问，严禁使用。
+    _CDN_HOST = "channelr.photo.store.qq.com"
+    candidates = [c for c in candidates if _CDN_HOST in c["img_url"]]
     if not candidates:
         return {"url": "", "width": hint_width, "height": hint_height,
                 "md5": file_md5, "orig_size": file_size, "task_id": file_uuid or file_md5}
@@ -423,12 +431,15 @@ def _upload_video_paths(video_paths: list, guild_id: int, channel_id: int,
         # 用 ffprobe 探测视频真实宽高和时长，优于用户手动传入的 hint（通常为 0）
         hint_width    = entry.get("width", 0)
         hint_height   = entry.get("height", 0)
-        hint_duration = entry.get("duration", 0)
+        # 用户传入的 duration 单位为秒，内部统一转为毫秒后传给服务端
+        hint_duration = int(entry.get("duration", 0) or 0) * 1000
         try:
             import subprocess as _sp, json as _json
             probe = _sp.run(
                 ["ffprobe", "-v", "quiet", "-print_format", "json",
-                 "-show_streams", fp],
+                 "-show_streams", "-show_entries",
+                 "stream=width,height,codec_type,duration:stream_tags=rotate:stream_side_data",
+                 fp],
                 capture_output=True, text=True, timeout=10,
             )
             if probe.returncode == 0:
@@ -438,9 +449,34 @@ def _upload_video_paths(video_paths: list, guild_id: int, channel_id: int,
                     None,
                 )
                 if video_stream:
-                    hint_width    = video_stream.get("width", 0)  or hint_width
-                    hint_height   = video_stream.get("height", 0) or hint_height
-                    hint_duration = int(float(video_stream.get("duration", 0) or 0)) or hint_duration
+                    w = video_stream.get("width", 0)  or hint_width
+                    h = video_stream.get("height", 0) or hint_height
+                    hint_duration = int(float(video_stream.get("duration", 0) or 0) * 1000) or hint_duration
+
+                    # 检查旋转角度：手机竖拍视频通常编码为横向 + rotate=90/270，
+                    # 需要交换宽高才能得到正确的显示分辨率。
+                    _rotate = 0
+                    # 来源1：tags.rotate（旧版 ffprobe）
+                    _tags = video_stream.get("tags") or {}
+                    try:
+                        _rotate = int(_tags.get("rotate", 0) or 0)
+                    except (ValueError, TypeError):
+                        _rotate = 0
+                    # 来源2：side_data_list 中的 displaymatrix（新版 ffprobe）
+                    if _rotate == 0:
+                        for _sd in (video_stream.get("side_data_list") or []):
+                            if _sd.get("side_data_type") == "Display Matrix":
+                                try:
+                                    _rotate = int(_sd.get("rotation", 0) or 0)
+                                except (ValueError, TypeError):
+                                    pass
+                                break
+                    # ±90° / ±270° 需要交换宽高
+                    if abs(_rotate) in (90, 270):
+                        w, h = h, w
+
+                    hint_width  = w
+                    hint_height = h
         except Exception:
             pass  # 探测失败时继续使用用户传入的 hint
 

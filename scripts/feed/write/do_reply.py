@@ -27,7 +27,7 @@ import os
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp, format_timestamp, build_json_contents
+from _mcp_client import call_mcp, format_timestamp, build_json_contents, get_feed_share_url
 
 TOOL_NAME = "do_reply"
 
@@ -77,8 +77,8 @@ SKILL_MANIFEST = {
             },
             "reply_type": {
                 "type": "integer",
-                "description": "操作类型：0=回复者自己删除回复，1=发表回复，2=帖子主人（Owner）删除他人回复，必填",
-                "enum": [0, 1, 2]
+                "description": "操作类型：1=发表回复（默认/最常用），0=回复者自己删除回复，2=帖子主人（Owner）删除他人回复，必填",
+                "enum": [1, 0, 2]
             },
             "replier_id": {
                 "type": "string",
@@ -86,20 +86,27 @@ SKILL_MANIFEST = {
             },
             "content": {
                 "type": "string",
-                "description": "回复内容（reply_type=1 时必填），string"
+                "description": (
+                    "回复内容（reply_type=1 时必填），string。"
+                    "⚠️ 禁止在 content 中手动拼写 '@用户名' 文本来模拟 at——这只是纯文字，不会产生系统级 at 效果，且与系统自动插入的 at 节点重叠会导致内容异常。"
+                    "需要 at 用户时，请使用 at_users 参数（系统自动在内容前插入 at 节点）；"
+                    "回复某条回复时，请填写 target_user_id + target_user_nick（系统自动插入「回复 @xxx」节点）。"
+                )
             },
             "at_users": {
                 "type": "array",
                 "description": (
                     "被@的用户列表（reply_type=1 时可选）。"
-                    "系统会在回复内容最前面自动插入对应的 @用户 节点。"
-                    "每项需包含 id（用户ID）和 nick（用户昵称）字段。"
+                    "⚠️ 填写前必须先调用 guild_member_search 或 get_guild_member_list 查到目标用户的 tiny_id（字段 uint64Tinyid），"
+                    "再将 tiny_id 填入 id 字段、昵称填入 nick 字段。"
+                    "严禁使用 QQ 号、猜测值或任何非 tiny_id 的值；"
+                    "严禁在 content 正文中手动拼写「@昵称」文本来模拟 at——那只是纯文字，不产生系统级 at 通知效果。"
                     "示例：[{\"id\": \"144115219800577368\", \"nick\": \"张三\"}]"
                 ),
                 "items": {
                     "type": "object",
                     "properties": {
-                        "id":   {"type": "string", "description": "用户ID"},
+                        "id":   {"type": "string", "description": "用户 tiny_id（uint64Tinyid），必须通过 guild_member_search 或 get_guild_member_list 查询获取，严禁填 QQ 号或猜测值"},
                         "nick": {"type": "string", "description": "用户昵称"}
                     },
                     "required": ["id", "nick"]
@@ -270,6 +277,12 @@ def run(params: dict) -> dict:
             at_users = params.get("at_users") or []
             if at_users:
                 data["at_users"] = at_users
+            # 追加帖子分享链接（失败时静默忽略，不影响主流程）
+            guild_id = str(params.get("guild_id", ""))
+            channel_id = str(params.get("channel_id", ""))
+            share_url = get_feed_share_url(guild_id, channel_id, params["feed_id"])
+            if share_url:
+                data["帖子链接"] = share_url
         return {"success": True, "data": data}
     except Exception as e:
         return {"success": False, "error": str(e)}

@@ -75,6 +75,12 @@ def run(params: dict) -> dict:
     err = validate_required(params, SKILL_MANIFEST)
     if err:
         return err
+
+    # 枚举值校验：防止非法值进入后续逻辑触发意外行为（V3-001）
+    valid_actions = (PREFER_ACTION_PREFER, PREFER_ACTION_CANCEL_PREFER)
+    if params["action"] not in valid_actions:
+        return {"success": False, "error": f"action 值无效：{params['action']}，仅支持 1（点赞）/3（取消点赞）"}
+
     arguments = {
         "feed_id": params["feed_id"],
         "action":  params["action"],

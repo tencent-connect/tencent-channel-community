@@ -25,7 +25,7 @@ import os
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from _mcp_client import call_mcp, format_timestamp, build_json_contents
+from _mcp_client import call_mcp, format_timestamp, build_json_contents, get_feed_share_url
 
 TOOL_NAME = "do_comment"
 
@@ -37,10 +37,10 @@ COMMENT_TYPE_DEL_OWNER = 2  # 帖子主人（Owner）删除评论
 SKILL_MANIFEST = {
     "name": "do-comment",
     "description": (
-        "对帖子发表顶层评论或删除评论。"
+        "对帖子发表顶层评论（最常用，comment_type=1）或删除评论。"
         "仅用于直接评论帖子本身（顶层评论）；若要回复某条已有评论，必须使用 do_reply 而非本工具。"
-        "comment_type=1 时发表评论（必填 content）；"
-        "comment_type=0 时评论者自己删除评论；comment_type=2 时帖子主人（Owner）删除他人评论（均必填 comment_id）。"
+        "发表评论：comment_type=1，必填 content；"
+        "删除评论：comment_type=0（评论者自己删）或 comment_type=2（帖子主人删他人评论），均必填 comment_id。"
         "发表评论时支持通过 at_users 指定被@的用户（系统自动在内容前插入@节点）。"
         "成功发表后返回评论ID和评论时间。"
     ),
@@ -57,25 +57,31 @@ SKILL_MANIFEST = {
             },
             "comment_type": {
                 "type": "integer",
-                "description": "操作类型：0=评论者自己删除评论，1=发表评论，2=帖子主人（Owner）删除他人评论，必填",
-                "enum": [0, 1, 2]
+                "description": "操作类型：1=发表评论（默认/最常用），0=评论者自己删除评论，2=帖子主人（Owner）删除他人评论，必填",
+                "enum": [1, 0, 2]
             },
             "content": {
                 "type": "string",
-                "description": "评论内容（comment_type=1 时必填），string"
+                "description": (
+                    "评论内容（comment_type=1 时必填），string。"
+                    "⚠️ 禁止在 content 中手动拼写 '@用户名' 文本来模拟 at——这只是纯文字，不会产生系统级 at 效果，且与系统自动插入的 at 节点重叠会导致内容异常。"
+                    "需要 at 用户时，请使用 at_users 参数（系统自动在内容前插入 at 节点）。"
+                )
             },
             "at_users": {
                 "type": "array",
                 "description": (
                     "被@的用户列表（comment_type=1 时可选）。"
-                    "系统会在评论内容最前面自动插入对应的 @用户 节点。"
-                    "每项需包含 id（用户ID）和 nick（用户昵称）字段。"
+                    "⚠️ 填写前必须先调用 guild_member_search 或 get_guild_member_list 查到目标用户的 tiny_id（字段 uint64Tinyid），"
+                    "再将 tiny_id 填入 id 字段、昵称填入 nick 字段。"
+                    "严禁使用 QQ 号、猜测值或任何非 tiny_id 的值；"
+                    "严禁在 content 正文中手动拼写「@昵称」文本来模拟 at——那只是纯文字，不产生系统级 at 通知效果。"
                     "示例：[{\"id\": \"144115219800577368\", \"nick\": \"张三\"}]"
                 ),
                 "items": {
                     "type": "object",
                     "properties": {
-                        "id":   {"type": "string", "description": "用户ID"},
+                        "id":   {"type": "string", "description": "用户 tiny_id（uint64Tinyid），必须通过 guild_member_search 或 get_guild_member_list 查询获取，严禁填 QQ 号或猜测值"},
                         "nick": {"type": "string", "description": "用户昵称"}
                     },
                     "required": ["id", "nick"]
@@ -214,6 +220,12 @@ def run(params: dict) -> dict:
             at_users = params.get("at_users") or []
             if at_users:
                 data["at_users"] = at_users
+            # 追加帖子分享链接（失败时静默忽略，不影响主流程）
+            guild_id = str(params.get("guild_id", ""))
+            channel_id = str(params.get("channel_id", ""))
+            share_url = get_feed_share_url(guild_id, channel_id, params["feed_id"])
+            if share_url:
+                data["帖子链接"] = share_url
         return {"success": True, "data": data}
     except Exception as e:
         return {"success": False, "error": str(e)}

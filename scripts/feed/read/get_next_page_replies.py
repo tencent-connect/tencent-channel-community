@@ -30,8 +30,9 @@ SKILL_MANIFEST = {
     "name": "get-next-page-replies",
     "description": (
         "获取指定评论下的下一页回复列表，支持继续翻页。\n"
-        "调用时机：get_feed_comments 返回的评论中 next_page_reply=true 时，说明该评论有更多回复未展示。\n"
-        "首次调用必须将该评论的 attach_info 填入请求的 attach_info 字段（评论预览回复的翻页游标）。\n"
+        "调用时机：get_feed_comments 返回的评论中 has_more_replies=true 时，说明该评论有更多回复未展示。\n"
+        "所需的 attach_info 就在 get_feed_comments 返回的该评论对象的 attach_info 字段中，直接取用即可，无需额外请求。\n"
+        "首次调用将该评论的 attach_info 填入请求的 attach_info 字段；\n"
         "后续翻页填上一次本接口响应返回的 attach_info，直到响应 has_more=false 为止。\n"
         "返回回复内容、回复者信息、时间、点赞数及@的用户信息等。"
     ),
@@ -56,18 +57,18 @@ SKILL_MANIFEST = {
             },
             "guild_id": {
                 "type": "string",
-                "description": "频道ID，uint64 字符串，建议填写（透传至 channel_sign.guild_id）"
+                "description": "频道ID，uint64 字符串，必填（透传至 channel_sign.guild_id）"
             },
             "channel_id": {
                 "type": "string",
-                "description": "版块（子频道）ID，uint64 字符串，建议填写（透传至 channel_sign.channel_id）"
+                "description": "版块（子频道）ID，uint64 字符串，必填（透传至 channel_sign.channel_id）"
             },
             "page_size": {
                 "type": "integer",
                 "description": "每页回复数量，默认20，最大50"
             }
         },
-        "required": ["feed_id", "comment_id", "attach_info"]
+        "required": ["feed_id", "comment_id", "attach_info", "guild_id", "channel_id"]
     }
 }
 
@@ -124,13 +125,11 @@ def run(params: dict) -> dict:
         "comment_id": params["comment_id"],
     }
 
-    channel_sign: dict[str, str] = {}
-    if "guild_id" in params:
-        channel_sign["guild_id"] = str(params["guild_id"])
-    if "channel_id" in params:
-        channel_sign["channel_id"] = str(params["channel_id"])
-    if channel_sign:
-        arguments["channel_sign"] = channel_sign
+    channel_sign: dict[str, str] = {
+        "guild_id":   str(params["guild_id"]),
+        "channel_id": str(params["channel_id"]),
+    }
+    arguments["channel_sign"] = channel_sign
 
     if "page_size" in params:
         arguments["page_size"] = int(params["page_size"])

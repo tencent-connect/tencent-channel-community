@@ -2,7 +2,7 @@
 name: tencent-channel-community
 description: 腾讯频道社区操作 skill,支持频道管理、内容管理与辅助运营,可用于创建和预览公开/私密频道、查看和修改频道资料、管理频道成员与子频道、搜索频道/帖子/作者并获取分享链接、浏览频道主页或指定版块帖子、查看帖子详情/评论/回复、查看互动消息通知、发帖改帖删帖、评论回复点赞、上传图片/视频/文件素材、内容巡检和频道问答自动回复。涉及腾讯频道、频道主页帖子、发帖删帖、评论回复、互动消息、频道成员、分享链接等任务时,应优先使用本 skill。
 homepage: https://connect.qq.com/ai
-version: 1.0.1
+version: 1.0.2
 author: tencent-channel-community
 python: ">=3.10"
 metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","tencentTokenMode":"custom","tokenUrl":"https://connect.qq.com/ai","emoji":"📢"}}
@@ -36,6 +36,7 @@ bind_mcp_methods:
   - get_guild_channel_list
   - search_guild_content
   - get_join_guild_setting
+  - get_share_info
   # manage · write
   - join_guild
   - kick_guild_member
@@ -57,13 +58,27 @@ bind_mcp_methods:
 | 用户意图 | 参考文档 |
 |---------|----------|
 | Token 配置、连通性校验 | `references/manage-guild.md` |
-| 创建频道、频道资料查询 / 修改、频道版块列表、搜索频道 / 作者、加入频道、分享链接、给自己发送QQ通知 | `references/manage-guild.md` |
-| 查看成员列表、搜索成员、查个人资料、禁言 / 解禁、踢成员 | `references/manage-member.md` |
+| 创建频道、频道资料查询 / 修改、频道版块列表、搜索频道 / 作者、加入频道、分享链接、解析分享链接、给自己发送QQ通知 | `references/manage-guild.md` |
+| 查看成员列表、查询频道内的机器人、搜索成员、查个人资料、禁言 / 解禁、踢成员 | `references/manage-member.md` |
 | 浏览频道主页 / 指定版块帖子、帖子详情 / 评论 / 回复、搜索帖子、查看互动消息通知 | `references/feed-reference.md` |
 | 发帖、改帖、删帖、评论、回复、点赞、富媒体上传、在帖子/评论/回复中 @用户 | `references/feed-reference.md` |
 | 内容巡检、问答自动回复 | `references/feed-reference.md` |
 
 > **分流提醒**:用户说"看频道有哪些帖子"、"获取帖子"等,应转 `feed-reference.md`,不要停留在 manage。
+
+## 快速决策
+
+以下规则用于快速决策：
+
+### 链接识别
+
+用户消息中包含链接时：
+
+| 特征 | 判定 | 建议动作 |
+|------|------|---------|
+| `pd.qq.com/s/<code>` 短链 | 频道分享链接 | 先调用 `get_share_info` 解析，再按用户意图继续 |
+| `pd.qq.com/...?inviteCode=<code>` 长链 | 频道分享链接 | 先调用 `get_share_info` 解析，再按用户意图继续 |
+| 其他链接 | 非频道分享链接 | 不走解析流程 |
 
 ## 首次使用
 
@@ -80,6 +95,8 @@ bind_mcp_methods:
 1. **禁止** 在任何业务 stdin JSON 中传 `token`(避免泄露)
 2. **严禁** 向用户透露脚本名称、工具名称、文件路径
 3. 向用户输出 URL 时,如当前是 QQBot 通道,必须使用 `<链接>` 格式包裹,不加额外符号,不用 markdown 语法
+4. **@用户的唯一正确方式**：任何涉及 @ 用户的操作（发帖、改帖、评论、回复），必须先调用 `guild_member_search` 或 `get_guild_member_list` 查到目标用户的 `tiny_id`（字段 `uint64Tinyid`），再将其填入对应工具的 `at_users` 参数（`id` 字段填 `tiny_id`，`nick` 字段填昵称）。**严禁**在 `content` 正文中手动拼写 `@昵称` 文本——这只是纯文字，不产生任何系统级 at 通知效果；**严禁**使用 QQ 号、猜测值或任何非 `tiny_id` 的值填入 `at_users[].id`。
+5. 禁止直接跳过脚本的方式调用MCP接口
 
 ## 敏感字段策略
 

@@ -30,6 +30,7 @@ SKILL_MANIFEST = {
         "返回帖子ID、标题、作者、发布时间、评论数、点赞数等摘要信息。"
         "用户说「全部」「所有帖子」「最新」「按时间」时必须传 get_type=2；"
         "只有用户明确说「热门」时才传 get_type=1。"
+        "翻页时必须与上一次请求使用完全相同的 get_type（和 sort_option），禁止在翻页时改变排序模式。"
     ),
     "parameters": {
         "type": "object",
@@ -54,6 +55,7 @@ SKILL_MANIFEST = {
                     "2=最新/全部（用户说「全部」「所有帖子」「最新」「按时间」或未明确指定排序时使用，默认值）；"
                     "3=最相关。"
                     "不确定时默认传 2。"
+                    "⚠️ 翻页时必须与首次请求保持相同的 get_type，禁止在翻页时切换。"
                 ),
                 "enum": [1, 2, 3]
             },
@@ -64,7 +66,7 @@ SKILL_MANIFEST = {
             },
             "feed_attach_info": {
                 "type": "string",
-                "description": "翻页透传字段，首次请求不填，后续翻页填上一次响应返回的 feed_attach_info"
+                "description": "翻页透传字段，首次请求不填，后续翻页填上一次响应返回的 feed_attach_info。⚠️ 翻页时必须同时保持与首次请求相同的 get_type（和 sort_option），游标与排序模式绑定，切换 get_type 会导致拉取混乱。"
             }
         },
         "required": ["get_type"]

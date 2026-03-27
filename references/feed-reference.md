@@ -60,6 +60,7 @@
 - 用户说”**全部**” / “所有帖子” / “按时间” / 未明确指定排序时，必须传 `get_type=2`（最新序）。
 - 不确定时默认使用 `get_type=2`。
 - `get_type=2` 时 `sort_option` 不填则自动默认 `1`（发布时间序）。
+- **翻页时必须保持相同的 `get_type`（和 `sort_option`）**：`feed_attach_info` 游标与排序模式绑定，翻页请求中切换 `get_type` 会导致返回错误列表。例如用户查看热门帖子翻下一页，`get_type` 必须仍然传 `1`，即使用户没有再次提到"热门"。
 - `get-channel-timeline-feeds` **仅用于获取指定版块（子频道）的帖子**，需要同时提供 `guild_id` 和 `channel_id`。
 - 当用户只说“获取频道的帖子”而没有指定具体版块时，应使用 `get-guild-feeds`，不要改用 `get-channel-timeline-feeds`。
 - `get-guild-feeds` 返回后端错误（如 retCode `20047`）时，说明该频道可能未开启帖子功能或暂无帖子数据，应如实告知“该频道暂无帖子数据”，**不要**自行切换到其他工具重试。
@@ -98,6 +99,23 @@
 - `libsliceupload` 是 **可执行程序**（Go 编译产物），不是 `.so` / `.dylib` 动态库；**禁止**使用 `ctypes`、`dlopen`、`CDLL` 等方式加载。
 - 上传依赖不存在时，skill 会返回 `needs_confirm: true`；确认后调用 `upload_image.py` 的 `action=install_deps` 自动从 CDN 安装。
 - 发布视频帖时，skill 会自动用 `ffmpeg` 截取首帧作为封面。若检测到 `ffmpeg` 未安装，**skill 会自动安装**（macOS: `brew install ffmpeg`，Linux: `apt-get install -y ffmpeg`），无需 AI 或用户手动操作；Windows 不支持自动安装，会返回错误并提示手动下载。安装过程耗时较长（首次约数分钟），属正常现象，告知用户耐心等待即可。
+
+### @用户的唯一正确流程（全局强制）
+
+> 适用于 `publish-feed`、`alter-feed`、`do-comment`、`do-reply` 所有涉及 @ 的操作。
+
+**两步缺一不可：**
+
+1. **先查 `tiny_id`**：调用 `guild_member_search` 或 `get_guild_member_list`，找到目标用户的 `tiny_id`（字段名 `uint64Tinyid`）和昵称（`memberName` / `nick`）。
+2. **再传 `at_users`**：将查到的值填入对应写操作工具的 `at_users` 参数，格式 `[{"id": "<tiny_id>", "nick": "<昵称>"}]`。
+
+**严禁的错误做法：**
+
+| 错误做法 | 后果 |
+|---------|------|
+| 在 `content` 正文里写 `@张三` | 只是纯文字，用户**不会收到任何 at 通知** |
+| `at_users[].id` 填 QQ 号、猜测值 | @ 节点指向无效用户，**实际未 at 到任何人** |
+| 不传 `at_users`，仅在 `content` 里提及昵称 | 同第一条，无系统级 at 效果 |
 
 ### 帖子长度与拆分规则
 
@@ -211,7 +229,7 @@ echo '{"feed_id":"<FEED_ID>","guild_id":"<GUILD_ID>"}' | python3 scripts/feed/re
 获取指定评论下的下一页回复列表。首次调用传 `get-feed-comments` 返回评论中的 `attach_info`，后续继续传本接口返回的 `attach_info`，直到 `has_more=false`。
 
 ```bash
-echo '{"feed_id":"<FEED_ID>","comment_id":"<COMMENT_ID>","attach_info":"<ATTACH_INFO>"}' | python3 scripts/feed/read/get_next_page_replies.py
+echo '{"feed_id":"<FEED_ID>","comment_id":"<COMMENT_ID>","attach_info":"<ATTACH_INFO>","guild_id":"<GUILD_ID>","channel_id":"<CHANNEL_ID>"}' | python3 scripts/feed/read/get_next_page_replies.py
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -219,8 +237,8 @@ echo '{"feed_id":"<FEED_ID>","comment_id":"<COMMENT_ID>","attach_info":"<ATTACH_
 | `feed_id` | string | 是 | 帖子 ID |
 | `comment_id` | string | 是 | 评论 ID |
 | `attach_info` | string | 是 | 翻页游标 |
-| `guild_id` | string | 否 | 频道 ID，建议填写 |
-| `channel_id` | string | 否 | 版块 ID，建议填写 |
+| `guild_id` | string | **是** | 频道 ID |
+| `channel_id` | string | **是** | 版块 ID |
 | `page_size` | integer | 否 | 每页回复数量，默认 20，最大 50 |
 
 ### get-search-guild-feed
@@ -354,7 +372,7 @@ echo '{"feed_id":"<FEED_ID>","create_time":<UNIX_TIMESTAMP>,"guild_id":"<GUILD_I
 | `feed_id` | string | 是 | 帖子 ID |
 | `feed_create_time` | integer | 是 | 帖子发表时间 |
 | `comment_type` | integer | 是 | 操作类型：0 / 1 / 2 |
-| `content` | string | 否 | 评论内容（发表时必填） |
+| `content` | string | 否 | 评论内容（发表时必填）；⚠️ **禁止在 content 中手动拼写 `@用户名` 文本**，这只是纯文字不产生系统 at 效果，需要 at 用户请使用 `at_users` 参数 |
 | `images` | array | 否 | 评论图片列表（最多 1 张）；每项字段：`picId`、`picUrl`、`imageMD5`、`width`、`height` 等；⚠️ 字段名为 **`picUrl`**，与 `publish-feed` 的 `url` **不同** |
 | `comment_id` | string | 否 | 评论 ID（删除时必填） |
 | `comment_author_id` | string | 否 | 评论作者 ID（删除时必填） |
@@ -377,7 +395,7 @@ echo '{"feed_id":"<FEED_ID>","create_time":<UNIX_TIMESTAMP>,"guild_id":"<GUILD_I
 | `comment_create_time` | integer | 是 | 评论发表时间 |
 | `reply_type` | integer | 是 | 操作类型：0 / 1 / 2 |
 | `replier_id` | string | 是 | 回复人用户 ID |
-| `content` | string | 否 | 回复内容（发表时必填） |
+| `content` | string | 否 | 回复内容（发表时必填）；⚠️ **禁止在 content 中手动拼写 `@用户名` 文本**，这只是纯文字不产生系统 at 效果；at 用户用 `at_users` 参数，回复某条回复用 `target_user_id` + `target_user_nick`（系统自动插入「回复 @xxx」节点） |
 | `images` | array | 否 | 回复图片列表（最多 1 张）；每项字段：`picId`、`picUrl`、`imageMD5`、`width`、`height` 等；⚠️ 字段名为 **`picUrl`**，与 `publish-feed` 的 `url` **不同** |
 | `reply_id` | string | 否 | 回复 ID（删除时必填） |
 | `target_reply_id` | string | **条件必填** | 被回复的回复 ID；**回复某条回复时必须填写**，否则楼层嵌套关系丢失，UI 无法正确显示「回复 @xxx」。从 `get_feed_comments` 的 `replies_preview[].reply_id` 或 `get_next_page_replies` 的 `replies[].id` 获取 |

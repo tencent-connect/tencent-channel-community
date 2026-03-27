@@ -153,7 +153,6 @@ def run(params: dict) -> dict:
     }
 
     # comment=6（StComment）：like_type=3/4 时必填，like_type=5/6 时也需填写（提供所属评论信息）
-    # 注意：like_info 中不传 id 字段，避免 retCode=8004 UnmarshalString 错误
     if like_type in (LIKE_TYPE_LIKE_COMMENT, LIKE_TYPE_UNLIKE_COMMENT,
                      LIKE_TYPE_LIKE_REPLY,   LIKE_TYPE_UNLIKE_REPLY):
         arguments["comment"] = {                            # 对应底层 comment=6
@@ -162,6 +161,7 @@ def run(params: dict) -> dict:
                 "id": str(params["comment_author_id"]),
             },
             "like_info": {                                  # StComment.likeInfo=8
+                "id":     params["comment_id"],             # StLike.id=1，必填，填评论ID
                 "status": 1 if like_type == LIKE_TYPE_LIKE_COMMENT else 0,
                 "count":  params.get("comment_like_count", 0),
             },
@@ -175,6 +175,7 @@ def run(params: dict) -> dict:
                 "id": str(params["reply_author_id"]),
             },
             "like_info": {                                  # StReply.likeInfo=7
+                "id":     params["reply_id"],               # StLike.id=1，必填，填回复ID
                 "status": 1 if like_type == LIKE_TYPE_LIKE_REPLY else 0,
                 "count":  params.get("reply_like_count", 0),
             },
