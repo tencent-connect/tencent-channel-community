@@ -12,8 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -23,6 +22,11 @@
 ## 📖 Introduction
 
 **tencent-channel-community** is a full-featured Tencent Channel community management skill that covers channel creation and administration, member operations, post publishing, content moderation, and more, enabling AI assistants to manage Tencent Channel communities efficiently.
+
+All operations are invoked via `tencent-channel-cli <domain> <action>`, supporting two parameter modes:
+
+- **stdin JSON**: `echo '{"guild_id":"123"}' | tencent-channel-cli manage get-guild-info`
+- **CLI flag**: `tencent-channel-cli manage get-guild-info --guild-id 123`
 
 🔗 **Official Website**: [https://connect.qq.com/ai](https://connect.qq.com/ai)
 
@@ -34,17 +38,19 @@
 
 - **Create Channels** - Create public or private themed channels with preview support
 - **Channel Settings** - View or update channel profile, avatar, name, and description
+- **Sub-channel Management** - Create, modify, and delete sub-channels
 - **Member Management** - View joined channels, channel members, and sub-channel lists, with member search by nickname
-- **Search** - Search channels, posts, and authors
-- **Sharing** - Get channel and post share links
-- **Admin Actions** - Join channels with verification pre-check, mute members, or remove members (admin permission required)
+- **Search** - Search channels, posts, and authors, with cross-channel global search and in-channel search
+- **Sharing** - Get channel and post share links, parse share links
+- **Admin Actions** - Join channels (with multiple verification modes), mute/remove members, set/remove admins (admin permission required)
 
 ### 📰 Content Management (Posts)
 
 - **Browse Posts** - Browse channel homepage posts or posts in a specific sub-channel with pagination support
 - **Post Details** - View post details, comments, and replies, with standalone post share-link retrieval
-- **Publishing & Editing** - Create, edit, and delete posts, including image and video posts
-- **Interactions** - Comment, reply, and like content
+- **Publishing & Editing** - Create, edit, and delete posts, including image/video posts with embedded hyperlinks
+- **Interactions** - Comment, reply, like, set essence, and pin posts
+- **Notifications** - View interaction notifications for pins, likes, comments, replies, and mentions
 - **Operations Tools** - Content inspection and Q&A auto-reply tools
 
 ---
@@ -53,14 +59,20 @@
 
 ### Requirements
 
-- **Python** >= 3.10
-- **Node.js** (required by mcporter)
+- **Node.js** (required by tencent-channel-cli)
 - **Token**: Obtain it from [https://connect.qq.com/ai](https://connect.qq.com/ai)
 
 ### Installation
 
 Get the one-click installation command from [https://connect.qq.com/ai](https://connect.qq.com/ai)
 
+### Environment Verification
+
+```bash
+tencent-channel-cli --version          # Check installation
+tencent-channel-cli token verify       # Verify login status
+tencent-channel-cli doctor             # Run connectivity self-check
+```
 
 ---
 
@@ -98,46 +110,71 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 
 | Tool | Description |
 |------|-------------|
-| `verify` | Verify the token and MCP connectivity |
-| `get_my_join_guild_info` | Get the list of channels joined by the current account |
-| `get_guild_info` | Get channel profile information |
-| `get_guild_member_list` | Get the channel member list with pagination support |
-| `guild_member_search` | Search channel members by nickname |
-| `get_guild_channel_list` | Get the list of sub-channels |
-| `get_user_info` | Get member profile information |
-| `search_guild_content` | Search channels, posts, authors, or all content |
-| `get_guild_share_url` | Get the channel share link |
-| `get_join_guild_setting` | View channel join settings and verification mode |
-| `preview_theme_private_guild` | Preview channel creation without actually creating it |
-| `create_theme_private_guild` | Create a public or private themed channel |
-| `join_guild` | Join a channel |
-| `modify_member_shut_up` | Mute or unmute a member |
-| `kick_guild_member` | Remove a member from the channel |
-| `upload_guild_avatar` | Update the channel avatar |
-| `update_guild_info` | Update the channel name and description |
-| `push_qq_msg` | Send a QQ message to yourself |
+| `verify` | Verify the token and CLI connectivity |
+| `get-my-join-guild-info` | Get the list of channels joined by the current account |
+| `get-guild-info` | Get channel profile information |
+| `get-guild-member-list` | Get the channel member list with pagination support |
+| `guild-member-search` | Search channel members by nickname |
+| `get-guild-channel-list` | Get the list of sub-channels |
+| `get-user-info` | Get member profile information |
+| `search-guild-content` | Search channels, posts, authors, or all content (cross-channel global search) |
+| `get-guild-share-url` | Get the channel share link |
+| `get-share-info` | Parse share links (pd.qq.com domain) |
+| `get-join-guild-setting` | View channel join settings and verification mode |
+| `preview-theme-private-guild` | Preview channel creation without actually creating it |
+| `create-theme-private-guild` | Create a public or private themed channel |
+| `join-guild` | Join a channel (with automatic verification pre-check) |
+| `modify-member-shut-up` | Mute or unmute a member |
+| `kick-guild-member` | Remove a member from the channel |
+| `upload-guild-avatar` | Update the channel avatar |
+| `update-guild-info` | Update the channel name and description |
+| `create-channel` | Create a sub-channel |
+| `modify-channel` | Modify a sub-channel |
+| `delete-channel` | Delete a sub-channel (irreversible) |
+| `add-admin` | Set admin roles (supports batch) |
+| `remove-admin` | Remove admin roles (supports batch) |
+| `push-qq-msg` | Send a QQ message to yourself |
 
 ### Content Management Tools
 
 | Tool | Description |
 |------|-------------|
-| `get-guild-feeds` | Get channel homepage posts (hot, latest, or most relevant) |
+| `get-guild-feeds` | Get channel homepage posts (hot / latest) |
 | `get-channel-timeline-feeds` | Get posts from a specified sub-channel |
 | `get-feed-detail` | Get post details |
 | `get-feed-comments` | Get post comments |
 | `get-next-page-replies` | Get the next page of replies |
 | `get-feed-share-url` | Get the share short link for a specified post |
-| `get-search-guild-feed` | Search posts by keyword |
-| `publish-feed` | Publish a new post (text, image, or video) |
+| `search-guild-feeds` | Search posts by keyword within a channel |
+| `get-notices` | Get interaction notifications (pins / likes / comments / replies / mentions) |
+| `publish-feed` | Publish a new post (text, image, or video with embedded hyperlinks) |
 | `alter-feed` | Edit a post |
 | `del-feed` | Delete a post |
 | `do-comment` | Add or delete a comment |
 | `do-reply` | Add or delete a reply |
 | `do-like` | Like or unlike a comment or reply |
 | `do-feed-prefer` | Like or unlike a post |
+| `set-feed-essence` | Set or unset a post as essence |
+| `top-feed` | Pin or unpin a post |
+| `push-essence-feed` | Push essence post notification |
 | `upload-image` | Upload media files (automatically used by `publish-feed`) |
-| `auto-clean-channel-feeds` | Run content inspection scans |
-| `channel-qa-responder` | Q&A auto-reply |
+
+---
+
+## ⚡ Shortcut Commands
+
+Shortcut commands combine multi-step operations into a single call for improved efficiency.
+
+| Intent | Command |
+|--------|---------|
+| Search and join a channel | `tencent-channel-cli manage search-and-join --keyword "<keyword>" --json` |
+| Quick publish a post | `tencent-channel-cli feed quick-publish --content "<content>" --json` |
+| Search posts and comment | `tencent-channel-cli feed search-and-comment --guild-id <ID> --query "<keyword>" --content "<comment>" --json` |
+| Delete post and mute author | `tencent-channel-cli feed delete-and-mute --guild-id <ID> --query "<keyword>" --json` |
+| Get latest post details for summarization | `tencent-channel-cli feed latest-feeds-detail --json` |
+| Get hot post details for summarization | `tencent-channel-cli feed hot-feeds-detail --json` |
+
+Shortcut commands use a multi-turn interaction model: when `status: "waiting"` is returned, follow the `resume_command` template with `--pick <INDEX>` or `--set key=value` to continue. All shortcut commands require the `--json` flag.
 
 ---
 
@@ -146,30 +183,23 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 ### Permission Notes
 All operations use the permissions of the user associated with the current token.
 
+### High-Risk Operations
+`del-feed`, `kick-guild-member`, `modify-member-shut-up`, `delete-channel`, `remove-admin`, and similar operations are irreversible or high-risk. They require the `--yes` flag for confirmation.
+
 ---
 
 ## 📁 Project Structure
 
 ```
 tencent-channel-community/
-├── SKILL.md                    # AI skill description
-├── scripts/
-│   ├── token/
-│   │   ├── setup.sh            # Token setup
-│   │   └── verify.sh           # Token verification
-│   ├── manage/
-│   │   ├── read/               # Channel read operations
-│   │   └── write/              # Channel write operations
-│   └── feed/
-│       ├── read/               # Content read operations
-│       ├── write/              # Content write operations
-│       └── operation/          # Operations tools
+├── SKILL.md                    # AI skill description (CLI invocation rules & routing)
+├── _meta.json                  # Skill metadata
 ├── references/
 │   ├── manage-guild.md         # Channel management reference
 │   ├── manage-member.md        # Member management reference
 │   └── feed-reference.md       # Content management reference
-├── README.md
-└── README_EN.md
+├── README.md                   # Chinese README
+└── README_EN.md                # English README
 ```
 
 ---

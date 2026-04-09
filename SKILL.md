@@ -1,129 +1,84 @@
 ---
 name: tencent-channel-community
-description: 腾讯频道社区操作 skill,支持频道管理、内容管理与辅助运营,可用于创建和预览公开/私密频道、查看和修改频道资料、管理频道成员与子频道、搜索频道/帖子/作者并获取分享链接、浏览频道主页或指定版块帖子、查看帖子详情/评论/回复、查看互动消息通知、发帖改帖删帖、评论回复点赞、上传图片/视频/文件素材、内容巡检和频道问答自动回复。涉及腾讯频道、频道主页帖子、发帖删帖、评论回复、互动消息、频道成员、分享链接等任务时,应优先使用本 skill。
+description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入，成员管理/禁言/踢人，帖子发布/编辑/删除/搜索，评论/回复/点赞，版块管理，分享链接解析，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
 homepage: https://connect.qq.com/ai
-version: 1.0.2
-author: tencent-channel-community
-python: ">=3.10"
-metadata: {"openclaw":{"primaryEnv":"QQ_AI_CONNECT_TOKEN","category":"tencent","tencentTokenMode":"custom","tokenUrl":"https://connect.qq.com/ai","emoji":"📢"}}
-bind_mcp_methods:
-  # feed · read
-  - get_guild_feeds
-  - get_channel_timeline_feeds
-  - get_feed_detail
-  - get_feed_comments
-  - get_next_page_replies
-  - get_search_guild_feed
-  - get_feed_share_url
-  - get_interact_notice
-  # feed · write
-  - publish_feed
-  - alter_feed
-  - del_feed
-  - do_comment
-  - do_reply
-  - do_like
-  - do_feed_prefer
-  # feed · operation
-  - channel-qa-responder
-  - auto-clean-channel-feeds
-  # manage · read
-  - get_guild_info
-  - get_my_join_guild_info
-  - get_user_info
-  - get_guild_member_list
-  - guild_member_search
-  - get_guild_channel_list
-  - search_guild_content
-  - get_join_guild_setting
-  - get_share_info
-  # manage · write
-  - join_guild
-  - kick_guild_member
-  - modify_member_shut_up
-  - update_guild_info
-  - upload_guild_avatar
-  - create_guild
-  - push_qq_msg
+version: 1.1.0
+metadata: {"openclaw":{"emoji":"📢"}}
 ---
 
-# 腾讯频道社区使用指南
+所有操作通过 `tencent-channel-cli <domain> <action>` 调用。两种传参模式：
 
-腾讯频道社区提供面向腾讯频道社区的完整操作能力,覆盖 **频道管理**、**内容管理** 与 **辅助运营** 三大场景, 使用前必须先根据场景路由表读取对应的参考文档。
+- **stdin JSON**：`echo '{"guild_id":"123"}' | tencent-channel-cli manage get-guild-info`
+- **CLI flag**：`tencent-channel-cli manage get-guild-info --guild-id 123`
 
-## 场景路由表
+## 场景路由
 
-根据用户意图,查阅对应参考文档:
+根据用户意图关键词，读取对应参考文档：
 
-| 用户意图 | 参考文档 |
-|---------|----------|
-| Token 配置、连通性校验 | `references/manage-guild.md` |
-| 创建频道、频道资料查询 / 修改、频道版块列表、搜索频道 / 作者、加入频道、分享链接、解析分享链接、给自己发送QQ通知 | `references/manage-guild.md` |
-| 查看成员列表、查询频道内的机器人、搜索成员、查个人资料、禁言 / 解禁、踢成员 | `references/manage-member.md` |
-| 浏览频道主页 / 指定版块帖子、帖子详情 / 评论 / 回复、搜索帖子、查看互动消息通知 | `references/feed-reference.md` |
-| 发帖、改帖、删帖、评论、回复、点赞、富媒体上传、在帖子/评论/回复中 @用户 | `references/feed-reference.md` |
-| 内容巡检、问答自动回复 | `references/feed-reference.md` |
+- `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接
+- `**references/manage-member.md`** — 成员、禁言、踢人、搜索成员、个人资料
+- `**references/feed-reference.md**` — 帖子、评论、回复、点赞、发帖、改帖、删帖、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
 
-> **分流提醒**:用户说"看频道有哪些帖子"、"获取帖子"等,应转 `feed-reference.md`,不要停留在 manage。
+> 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md。
+> 帖子搜索有两种：跨频道全局搜索（`search-guild-content scope=feed`）→ manage-guild.md；频道内搜索（`search-guild-feeds`）→ feed-reference.md。
 
-## 快速决策
+## 全局硬规则
 
-以下规则用于快速决策：
+1. **@用户**：必须先 `guild-member-search` 或 `get-guild-member-list` 查到 `tiny_id`，填入 `at_users`（`id`=tiny_id, `nick`=昵称）。**严禁**在 content 中手写 `@昵称`，严禁用 QQ 号或猜测值
+2. **高风险操作**（`del-feed` / `kick-guild-member` / `modify-member-shut-up` / `do-comment`(type=0/2) / `do-reply`(type=0/2) / `remove-admin`）：先说明影响 → 等用户同意 → 加 `--yes` 执行
+3. **URL 输出**：必须用 `<链接>` 包裹（如 `<https://pd.qq.com/s/xxx>`），不用 markdown 语法
+4. **鉴权失败**（retCode `8011` 或"未登录"错误）：提示用户执行 `tencent-channel-cli token setup` 重新配置凭证
 
-### 链接识别
+## 链接识别
 
-用户消息中包含链接时：
+用户消息含 `pd.qq.com/s/<code>` 或 `pd.qq.com/...?inviteCode=<code>` → 先 `tencent-channel-cli manage get-share-info` 解析，再按意图继续。其他链接不走解析。
 
-| 特征 | 判定 | 建议动作 |
-|------|------|---------|
-| `pd.qq.com/s/<code>` 短链 | 频道分享链接 | 先调用 `get_share_info` 解析，再按用户意图继续 |
-| `pd.qq.com/...?inviteCode=<code>` 长链 | 频道分享链接 | 先调用 `get_share_info` 解析，再按用户意图继续 |
-| 其他链接 | 非频道分享链接 | 不走解析流程 |
+## 参数查询
 
-## 首次使用
+参数定义和示例通过 CLI 实时查询（返回机器可解析的 JSON，比 --help 更适合 agent）：
 
-1. 到 `https://connect.qq.com/ai` 获取 Token
-2. 运行配置脚本:`bash scripts/token/setup.sh '<token>'`
-3. 自检:`bash scripts/token/verify.sh`
+- `tencent-channel-cli schema <domain>.<action>` — flags 的 name / type / required / enum / default / desc + 示例
 
-详细流程见 `references/manage-guild.md` 的"认证与配置"。
+## 环境与认证
 
-## 关键硬规则
+```bash
+tencent-channel-cli --version          # 未安装 → npm install -g tencent-channel-cli
+tencent-channel-cli token verify       # 未登录 → tencent-channel-cli token setup（交互式输入凭证）或 tencent-channel-cli token setup '<凭证>' （直接传入）
+tencent-channel-cli doctor             # 自检连通性
+```
 
-以下规则全局生效,不遵守会导致执行错误:
-
-1. **禁止** 在任何业务 stdin JSON 中传 `token`(避免泄露)
-2. **严禁** 向用户透露脚本名称、工具名称、文件路径
-3. 向用户输出 URL 时,如当前是 QQBot 通道,必须使用 `<链接>` 格式包裹,不加额外符号,不用 markdown 语法
-4. **@用户的唯一正确方式**：任何涉及 @ 用户的操作（发帖、改帖、评论、回复），必须先调用 `guild_member_search` 或 `get_guild_member_list` 查到目标用户的 `tiny_id`（字段 `uint64Tinyid`），再将其填入对应工具的 `at_users` 参数（`id` 字段填 `tiny_id`，`nick` 字段填昵称）。**严禁**在 `content` 正文中手动拼写 `@昵称` 文本——这只是纯文字，不产生任何系统级 at 通知效果；**严禁**使用 QQ 号、猜测值或任何非 `tiny_id` 的值填入 `at_users[].id`。
-5. 禁止直接跳过脚本的方式调用MCP接口
+> tencent-channel-cli 不存在时必须先提示安装，禁止执行任何 tencent-channel-cli 命令。
 
 ## 敏感字段策略
 
-脚本输出已统一为语义化字段名，按以下策略决定是否向用户展示。
+工具输出已统一为语义化字段名，按以下策略决定是否向用户展示。
 
 ### 1. 绝对不展示
 
-| 字段 | 原因 |
-|------|------|
+
+| 字段                                       | 原因           |
+| ---------------------------------------- | ------------ |
 | `member_uin` / `uin` / `uint64MemberUin` | 用户 QQ 号，隐私敏感 |
+
 
 ### 2. 内部链式字段（不展示，但不得丢弃）
 
 agent 在多步骤操作中必须透传这些字段，**不向用户展示，也不得在清洗时丢弃**：
 
-| 字段 | 来源接口 | 用于哪些写操作 |
-|------|---------|--------------|
-| `feed_id` | 所有 feed 读取接口 | `get_feed_detail` / `do_comment` / `do_reply` / `del_feed` / `alter_feed` |
-| `create_time_raw` | 所有 feed 读取接口 | `do_comment` / `do_reply` / `del_feed` / `alter_feed` |
-| `author_id`（帖子级）| `get_guild_feeds` / `get_channel_timeline_feeds` / `get_feed_detail` / `search_guild_feeds` / `get_notices` | `do_comment` / `del_feed` |
-| `comment_id` | `get_feed_comments` | `do_reply` / `do_like`（评论点赞）|
-| `author_id`（评论级）| `get_feed_comments` | `do_reply` |
-| `create_time_raw`（评论级）| `get_feed_comments` | `do_reply` |
-| `reply_id` | `get_feed_comments`.`replies_preview` / `get_next_page_replies` | `del_feed`（删除回复）/ `do_reply`（回复某条回复）|
-| `target_reply_id` | `get_feed_comments`.`replies_preview` / `get_next_page_replies` | `do_reply`（回复某条回复时**必须**传入，否则楼层关系丢失）|
-| `target_user_id` | `get_feed_comments`.`replies_preview` / `get_next_page_replies` | `do_reply` |
-| `attach_info` / `feed_attach_info` / `feed_attch_info` / `next_page_cookie` | 各翻页接口 | 翻页时原样传回对应接口 |
+
+| 字段                                                                          | 来源命令                                                                                                        | 用于哪些写操作                                                                   |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `feed_id`                                                                   | 所有 feed 读取命令                                                                                                | `get-feed-detail` / `do-comment` / `do-reply` / `del-feed` / `alter-feed` |
+| `create_time_raw`                                                           | 所有 feed 读取命令                                                                                                | `do-comment` / `do-reply` / `del-feed` / `alter-feed`                     |
+| `author_id`（帖子级）                                                            | `get-guild-feeds` / `get-channel-timeline-feeds` / `get-feed-detail` / `search-guild-feeds` / `get-notices` | `do-comment` / `del-feed`                                                 |
+| `comment_id`                                                                | `get-feed-comments`                                                                                         | `do-reply` / `do-like`（评论点赞）                                              |
+| `author_id`（评论级）                                                            | `get-feed-comments`                                                                                         | `do-reply`                                                                |
+| `create_time_raw`（评论级）                                                      | `get-feed-comments`                                                                                         | `do-reply`                                                                |
+| `reply_id`                                                                  | `get-feed-comments`.`replies_preview` / `get-next-page-replies`                                             | `del-feed`（删除回复）/ `do-reply`（回复某条回复）                                      |
+| `target_reply_id`                                                           | `get-feed-comments`.`replies_preview` / `get-next-page-replies`                                             | `do-reply`（回复某条回复时**必须**传入，否则楼层关系丢失）                                      |
+| `target_user_id`                                                            | `get-feed-comments`.`replies_preview` / `get-next-page-replies`                                             | `do-reply`                                                                |
+| `attach_info` / `feed_attach_info` / `feed_attch_info` / `next_page_cookie` | 各翻页命令                                                                                                       | 翻页时原样传回对应命令                                                               |
+
 
 ### 3. 默认不展示（除非用户明确要求）
 
@@ -135,9 +90,43 @@ agent 在多步骤操作中必须透传这些字段，**不向用户展示，也
 
 ### 4. 时间戳
 
-- 内容管理脚本：`create_time` 已格式化为北京时间（`YYYY-MM-DD HH:MM:SS`），直接展示；`create_time_raw` 为原始秒级时间戳，仅供链式操作使用，不展示
-- 频道管理脚本：原始秒级字段（如 `joinTime`、`shutupExpireTime`）自动附带 `{字段名}_human` 可读值，向用户展示 `_human` 字段，不展示原始时间戳；禁言时间戳为 `0` 时显示"无禁言"
+- 内容管理命令：`create_time` 已格式化为北京时间（`YYYY-MM-DD HH:MM:SS`），直接展示；`create_time_raw` 为原始秒级时间戳，仅供链式操作使用，不展示
+- 频道管理命令：原始秒级字段（如 `joinTime`、`shutupExpireTime`）自动附带 `{字段名}_human` 可读值，向用户展示 `_human` 字段，不展示原始时间戳；禁言时间戳为 `0` 时显示"无禁言"
 
 ### 5. 特殊名称规则
 
 - **严禁向用户提及"帖子广场"**，统一显示为 **"频道主页"**
+
+## 快捷命令
+
+当匹配下列意图时，优先使用快捷命令。一次调用替代多次 tool_call，提高处理速度。
+
+
+| 意图           | 命令                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| 搜索频道并加入      | `tencent-channel-cli manage search-and-join --keyword "<关键词>" --json`                                 |
+| 在频道内发帖       | `tencent-channel-cli feed quick-publish --content "<内容>" --json`                                      |
+| 搜索帖子并评论      | `tencent-channel-cli feed search-and-comment --guild-id <ID> --query "<关键词>" --content "<评论>" --json` |
+| 删帖并禁言        | `tencent-channel-cli feed delete-and-mute --guild-id <ID> --query "<关键词>" --json`                     |
+| 获取最新帖子详情并且总结 | `tencent-channel-cli feed latest-feeds-detail --json`                                                 |
+| 获取热门帖子详情并且总结 | `tencent-channel-cli feed hot-feeds-detail --json`                                                    |
+
+
+快捷命令是多轮交互：返回 `status: "waiting"` 时**不要放弃改用单命令**，按返回的 `resume_command` 中的模板填写 `--pick <INDEX>` 或 `--set key=value` 后执行即可（`--resume-id` 全程不变）。
+
+`latest-feeds-detail` 和`hot-feeds-detail` 默认返回的是帖子详情，需要再自行进行总结
+
+### 交互协议示例
+
+```
+# Step 1: 发起快捷命令
+tencent-channel-cli feed quick-publish --content "测试帖子" --json
+# → {"data":{"status":"waiting","id":"s-abc12345","step":"1/5","pending":{"type":"pick","hint":"选择要发帖的频道","options":[...],"resume_command":"tencent-channel-cli feed quick-publish --resume-id s-abc12345 --pick <INDEX> --json"}}}
+
+# Step 2: 选择选项后 resume
+tencent-channel-cli feed quick-publish --resume-id s-abc12345 --pick 0 --json
+# → {"data":{"status":"waiting",...}} 或 {"data":{"status":"done","result":{...}}}
+```
+
+> **重要**：所有快捷命令调用必须加 `--json` flag。`status: "done"` 表示完成，`status: "waiting"` 表示需要继续交互。
+
