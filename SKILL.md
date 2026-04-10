@@ -1,8 +1,8 @@
 ---
 name: tencent-channel-community
-description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入，成员管理/禁言/踢人，帖子发布/编辑/删除/搜索，评论/回复/点赞，版块管理，分享链接解析，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
+description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入/退出，成员管理/禁言/踢人，帖子发布/编辑/删除/搜索，评论/回复/点赞，版块管理，分享链接解析，频道私信，加入设置管理，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
 homepage: https://connect.qq.com/ai
-version: 1.1.0
+version: 1.1.1  
 metadata: {"openclaw":{"emoji":"📢"}}
 ---
 
@@ -15,9 +15,9 @@ metadata: {"openclaw":{"emoji":"📢"}}
 
 根据用户意图关键词，读取对应参考文档：
 
-- `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接
+- `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接、加入设置、修改加入设置、私信、发私信、退出频道
 - `**references/manage-member.md`** — 成员、禁言、踢人、搜索成员、个人资料
-- `**references/feed-reference.md**` — 帖子、评论、回复、点赞、发帖、改帖、删帖、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
+- `**references/feed-reference.md`** — 帖子、评论、回复、点赞、发帖、改帖、删帖、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
 
 > 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md。
 > 帖子搜索有两种：跨频道全局搜索（`search-guild-content scope=feed`）→ manage-guild.md；频道内搜索（`search-guild-feeds`）→ feed-reference.md。
@@ -25,7 +25,7 @@ metadata: {"openclaw":{"emoji":"📢"}}
 ## 全局硬规则
 
 1. **@用户**：必须先 `guild-member-search` 或 `get-guild-member-list` 查到 `tiny_id`，填入 `at_users`（`id`=tiny_id, `nick`=昵称）。**严禁**在 content 中手写 `@昵称`，严禁用 QQ 号或猜测值
-2. **高风险操作**（`del-feed` / `kick-guild-member` / `modify-member-shut-up` / `do-comment`(type=0/2) / `do-reply`(type=0/2) / `remove-admin`）：先说明影响 → 等用户同意 → 加 `--yes` 执行
+2. **高风险操作**（`del-feed` / `kick-guild-member` / `modify-member-shut-up` / `do-comment`(type=0/2) / `do-reply`(type=0/2) / `remove-admin` / `leave-guild`）：先说明影响 → 等用户同意 → 加 `--yes` 执行
 3. **URL 输出**：必须用 `<链接>` 包裹（如 `<https://pd.qq.com/s/xxx>`），不用 markdown 语法
 4. **鉴权失败**（retCode `8011` 或"未登录"错误）：提示用户执行 `tencent-channel-cli token setup` 重新配置凭证
 
@@ -41,13 +41,32 @@ metadata: {"openclaw":{"emoji":"📢"}}
 
 ## 环境与认证
 
+**最低 CLI 版本：1.0.2**
+
 ```bash
-tencent-channel-cli --version          # 未安装 → npm install -g tencent-channel-cli
+tencent-channel-cli --version          # 未安装或版本 < 1.0.2 → npm install -g tencent-channel-cli
 tencent-channel-cli token verify       # 未登录 → tencent-channel-cli token setup（交互式输入凭证）或 tencent-channel-cli token setup '<凭证>' （直接传入）
 tencent-channel-cli doctor             # 自检连通性
 ```
 
 > tencent-channel-cli 不存在时必须先提示安装，禁止执行任何 tencent-channel-cli 命令。
+> CLI 版本低于 **1.0.2** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
+
+## 更新检测
+
+通过 HEAD 请求（不下载文件）读取响应头，判断 Skill 和 CLI 是否有新版本：
+
+```bash
+curl -sI -L https://connect.qq.com/skills/tencent-channel-community.zip
+# 检查 x-cos-meta-tcc-version     → Skill 最新版本（与本文件 frontmatter version 比对）
+# 检查 x-cos-meta-tcc-cli-version → 最新 CLI 版本（与 tencent-channel-cli --version 比对）
+```
+
+SKILL有新版本时，从以下渠道获取更新：
+
+- CDN：[https://connect.qq.com/skills/tencent-channel-community.zip](https://connect.qq.com/skills/tencent-channel-community.zip)
+- GitHub：[https://github.com/tencent-connect/tencent-channel-community](https://github.com/tencent-connect/tencent-channel-community)
+- ClawHub：[https://clawhub.ai/tencent-adm/tencent-channel-community](https://clawhub.ai/tencent-adm/tencent-channel-community)
 
 ## 敏感字段策略
 
