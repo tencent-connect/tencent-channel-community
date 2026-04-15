@@ -80,6 +80,24 @@
 
 > 高级类型（后三种）必须通过 stdin JSON 传入完整 `setting` 对象，CLI flag 仅支持前三种基础类型。
 
+Windows / PowerShell 推荐写法：
+
+```powershell
+$body = @{
+  guild_id = "123456"
+  join_type = "JOIN_GUILD_TYPE_MULTI_QUESTION"
+  setting = @{
+    question = @{
+      items = @(
+        @{ title = "问题1"; answer = "A" },
+        @{ title = "问题2"; answer = "B" }
+      )
+    }
+  }
+} | ConvertTo-Json -Depth 8 -Compress
+$body | tencent-channel-cli manage update-join-guild-setting
+```
+
 ## 频道私信规则
 
 `push-group-dm-msg` 发送普通私信消息到指定用户。
@@ -101,3 +119,4 @@
 - `join-guild` 的 `join_guild_answers` 和 `join_guild_comment` 仅 stdin JSON 可传
 - `push-group-dm-msg` 的 `source-guild-id` 不是目标用户所在频道，而是发送者所在的来源频道
 - `update-join-guild-setting` 高级类型未传 `setting` 对象会直接报错
+- Windows / PowerShell 下不要直接照抄 bash 的 `echo '{...}' | ...`；复杂对象优先用 `ConvertTo-Json`

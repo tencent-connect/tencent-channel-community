@@ -12,7 +12,7 @@
   简体中文 | <a href="./README_EN.md">English</a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.2-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -43,13 +43,13 @@
 - **成员管理** - 查看已加入的频道、频道成员、子频道列表，支持按昵称搜索成员
 - **搜索功能** - 搜索频道、帖子、作者，支持跨频道全局搜索和频道内搜索
 - **分享功能** - 获取频道和帖子分享链接，解析分享链接
-- **管理操作** - 加入频道（支持多种验证方式）、禁言/踢人、设置/移除管理员（需管理员权限）
+- **管理操作** - 加入频道（支持多种验证方式）、退出频道、频道私信、加入设置管理、禁言/踢人、设置/移除管理员（需管理员权限）
 
 ### 📰 内容管理（帖子）
 
 - **浏览帖子** - 浏览频道主页或指定板块的帖子列表，支持翻页
 - **帖子详情** - 查看帖子详情、评论与回复，支持单独获取帖子分享短链
-- **发布编辑** - 发帖、改帖、删帖（支持图片/视频帖子，支持内嵌超链接）
+- **发布编辑** - 发帖、改帖、删帖、移帖（支持图片/视频帖子，支持内嵌超链接）
 - **互动功能** - 评论、回复、点赞、精华、置顶
 - **互动消息** - 查看顶帖、点赞、评论、回复、@等互动通知
 - **运营工具** - 内容巡检、问答类自动回复
@@ -70,10 +70,16 @@
 ### 环境验证
 
 ```bash
-tencent-channel-cli --version          # 检查是否安装
+tencent-channel-cli version            # 检查是否安装
 tencent-channel-cli token verify       # 验证登录状态
 tencent-channel-cli doctor             # 自检连通性
 ```
+
+### Windows / PowerShell
+
+- 优先使用 CLI flag 传参；复杂对象、数组等场景建议使用 `ConvertTo-Json`
+- 若 `.ps1` 执行策略受限，优先改用 `tencent-channel-cli.cmd`
+- 不建议直接照抄 bash 风格的 `echo '{...}' | ...` 用法
 
 ---
 
@@ -122,9 +128,11 @@ tencent-channel-cli doctor             # 自检连通性
 | `get-guild-share-url` | 获取频道分享链接 |
 | `get-share-info` | 解析分享链接（pd.qq.com 域名） |
 | `get-join-guild-setting` | 查看频道加入设置与验证方式 |
+| `update-join-guild-setting` | 修改频道加入设置 |
 | `preview-theme-private-guild` | 预览创建频道（不实际创建） |
 | `create-theme-private-guild` | 创建公开/私密主题频道 |
 | `join-guild` | 加入频道（自动预检验证方式） |
+| `leave-guild` | 退出频道 |
 | `modify-member-shut-up` | 禁言/解禁成员 |
 | `kick-guild-member` | 踢出频道成员 |
 | `upload-guild-avatar` | 修改频道头像 |
@@ -134,6 +142,7 @@ tencent-channel-cli doctor             # 自检连通性
 | `delete-channel` | 删除子版块（不可逆） |
 | `add-admin` | 设置管理员（支持批量） |
 | `remove-admin` | 移除管理员（支持批量） |
+| `push-group-dm-msg` | 向指定用户发送频道私信 |
 | `push-qq-msg` | 发送 QQ 消息给自己 |
 
 ### 内容管理工具
@@ -151,6 +160,7 @@ tencent-channel-cli doctor             # 自检连通性
 | `publish-feed` | 发布新帖子（文字/图片/视频，支持内嵌超链接） |
 | `alter-feed` | 修改帖子 |
 | `del-feed` | 删除帖子 |
+| `move-feed` | 将帖子移动到其他版块 |
 | `do-comment` | 发表/删除评论 |
 | `do-reply` | 发表/删除回复 |
 | `do-like` | 评论或回复点赞/取消点赞 |
@@ -175,7 +185,7 @@ tencent-channel-cli doctor             # 自检连通性
 | 获取最新帖子详情并总结 | `tencent-channel-cli feed latest-feeds-detail --json` |
 | 获取热门帖子详情并总结 | `tencent-channel-cli feed hot-feeds-detail --json` |
 
-快捷命令为多轮交互模式：返回 `status: "waiting"` 时按返回的 `resume_command` 模板填写 `--pick <INDEX>` 或 `--set key=value` 继续执行。所有快捷命令调用必须加 `--json` flag。
+快捷命令为多轮交互模式：返回 `status: "waiting"` 时必须继续执行返回的 `resume_command`，按模板填写 `--pick <INDEX>` 或 `--set key=value` 完成交互，不要误判为卡住。所有快捷命令调用必须加 `--json` flag。
 
 ---
 

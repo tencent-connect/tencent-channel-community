@@ -12,7 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.2-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -42,13 +42,13 @@ All operations are invoked via `tencent-channel-cli <domain> <action>`, supporti
 - **Member Management** - View joined channels, channel members, and sub-channel lists, with member search by nickname
 - **Search** - Search channels, posts, and authors, with cross-channel global search and in-channel search
 - **Sharing** - Get channel and post share links, parse share links
-- **Admin Actions** - Join channels (with multiple verification modes), mute/remove members, set/remove admins (admin permission required)
+- **Admin Actions** - Join channels (with multiple verification modes), leave channels, send channel DMs, manage join settings, mute/remove members, set/remove admins (admin permission required)
 
 ### 📰 Content Management (Posts)
 
 - **Browse Posts** - Browse channel homepage posts or posts in a specific sub-channel with pagination support
 - **Post Details** - View post details, comments, and replies, with standalone post share-link retrieval
-- **Publishing & Editing** - Create, edit, and delete posts, including image/video posts with embedded hyperlinks
+- **Publishing & Editing** - Create, edit, delete, and move posts, including image/video posts with embedded hyperlinks
 - **Interactions** - Comment, reply, like, set essence, and pin posts
 - **Notifications** - View interaction notifications for pins, likes, comments, replies, and mentions
 - **Operations Tools** - Content inspection and Q&A auto-reply tools
@@ -69,10 +69,16 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 ### Environment Verification
 
 ```bash
-tencent-channel-cli --version          # Check installation
+tencent-channel-cli version            # Check installation
 tencent-channel-cli token verify       # Verify login status
 tencent-channel-cli doctor             # Run connectivity self-check
 ```
+
+### Windows / PowerShell
+
+- Prefer CLI flags for simple parameters; use `ConvertTo-Json` for complex objects or arrays
+- If `.ps1` execution is restricted, prefer `tencent-channel-cli.cmd`
+- Avoid copying bash-style `echo '{...}' | ...` examples directly into PowerShell
 
 ---
 
@@ -121,9 +127,11 @@ tencent-channel-cli doctor             # Run connectivity self-check
 | `get-guild-share-url` | Get the channel share link |
 | `get-share-info` | Parse share links (pd.qq.com domain) |
 | `get-join-guild-setting` | View channel join settings and verification mode |
+| `update-join-guild-setting` | Update channel join settings |
 | `preview-theme-private-guild` | Preview channel creation without actually creating it |
 | `create-theme-private-guild` | Create a public or private themed channel |
 | `join-guild` | Join a channel (with automatic verification pre-check) |
+| `leave-guild` | Leave a channel |
 | `modify-member-shut-up` | Mute or unmute a member |
 | `kick-guild-member` | Remove a member from the channel |
 | `upload-guild-avatar` | Update the channel avatar |
@@ -133,6 +141,7 @@ tencent-channel-cli doctor             # Run connectivity self-check
 | `delete-channel` | Delete a sub-channel (irreversible) |
 | `add-admin` | Set admin roles (supports batch) |
 | `remove-admin` | Remove admin roles (supports batch) |
+| `push-group-dm-msg` | Send a channel DM to a specified user |
 | `push-qq-msg` | Send a QQ message to yourself |
 
 ### Content Management Tools
@@ -150,6 +159,7 @@ tencent-channel-cli doctor             # Run connectivity self-check
 | `publish-feed` | Publish a new post (text, image, or video with embedded hyperlinks) |
 | `alter-feed` | Edit a post |
 | `del-feed` | Delete a post |
+| `move-feed` | Move a post to another sub-channel |
 | `do-comment` | Add or delete a comment |
 | `do-reply` | Add or delete a reply |
 | `do-like` | Like or unlike a comment or reply |
@@ -174,7 +184,7 @@ Shortcut commands combine multi-step operations into a single call for improved 
 | Get latest post details for summarization | `tencent-channel-cli feed latest-feeds-detail --json` |
 | Get hot post details for summarization | `tencent-channel-cli feed hot-feeds-detail --json` |
 
-Shortcut commands use a multi-turn interaction model: when `status: "waiting"` is returned, follow the `resume_command` template with `--pick <INDEX>` or `--set key=value` to continue. All shortcut commands require the `--json` flag.
+Shortcut commands use a multi-turn interaction model: when `status: "waiting"` is returned, you must continue with the returned `resume_command`, filling in `--pick <INDEX>` or `--set key=value` as needed. Do not treat this state as a hang. All shortcut commands require the `--json` flag.
 
 ---
 

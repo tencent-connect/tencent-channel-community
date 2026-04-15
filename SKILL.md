@@ -1,8 +1,8 @@
----
+﻿---
 name: tencent-channel-community
-description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入/退出，成员管理/禁言/踢人，帖子发布/编辑/删除/搜索，评论/回复/点赞，版块管理，分享链接解析，频道私信，加入设置管理，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
+description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入/退出，成员管理/禁言/踢人，帖子发布/编辑/删除/移动/搜索，评论/回复/点赞，版块管理，分享链接解析，频道私信，加入设置管理，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
 homepage: https://connect.qq.com/ai
-version: 1.1.1  
+version: 1.1.2  
 metadata: {"openclaw":{"emoji":"📢"}}
 ---
 
@@ -11,13 +11,19 @@ metadata: {"openclaw":{"emoji":"📢"}}
 - **stdin JSON**：`echo '{"guild_id":"123"}' | tencent-channel-cli manage get-guild-info`
 - **CLI flag**：`tencent-channel-cli manage get-guild-info --guild-id 123`
 
+Windows / PowerShell 使用要求：
+
+- 如果在执行过程中提示相关命令、依赖没有安装，可以先在powershell里执行`Get-Command`或者`where.exe`命令，查找并确认是否真的没有安装
+- 执行`tencent-channel-cli`命令时，默认会使用`.ps1`脚本，但是windows可能默认的执行策略禁止运行`.ps1`脚本，会导致无交互的环境永久卡住，可以使用`.cmd`路径来调用
+- 能用 flag 时优先用 flag；只有复杂对象、数组、分页透传等场景再用 stdin JSON，**PowerShell JSON格式**：`$body = @{ guild_id = "123" } | ConvertTo-Json -Compress; $body | & tencent-channel-cli manage get-guild-info --json`
+
 ## 场景路由
 
 根据用户意图关键词，读取对应参考文档：
 
 - `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接、加入设置、修改加入设置、私信、发私信、退出频道
 - `**references/manage-member.md`** — 成员、禁言、踢人、搜索成员、个人资料
-- `**references/feed-reference.md`** — 帖子、评论、回复、点赞、发帖、改帖、删帖、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
+- `**references/feed-reference.md`** — 帖子、评论、回复、点赞、发帖、改帖、删帖、移帖、移动帖子、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
 
 > 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md。
 > 帖子搜索有两种：跨频道全局搜索（`search-guild-content scope=feed`）→ manage-guild.md；频道内搜索（`search-guild-feeds`）→ feed-reference.md。
@@ -27,7 +33,8 @@ metadata: {"openclaw":{"emoji":"📢"}}
 1. **@用户**：必须先 `guild-member-search` 或 `get-guild-member-list` 查到 `tiny_id`，填入 `at_users`（`id`=tiny_id, `nick`=昵称）。**严禁**在 content 中手写 `@昵称`，严禁用 QQ 号或猜测值
 2. **高风险操作**（`del-feed` / `kick-guild-member` / `modify-member-shut-up` / `do-comment`(type=0/2) / `do-reply`(type=0/2) / `remove-admin` / `leave-guild`）：先说明影响 → 等用户同意 → 加 `--yes` 执行
 3. **URL 输出**：必须用 `<链接>` 包裹（如 `<https://pd.qq.com/s/xxx>`），不用 markdown 语法
-4. **鉴权失败**（retCode `8011` 或"未登录"错误）：提示用户执行 `tencent-channel-cli token setup` 重新配置凭证
+4. **鉴权失败**（retCode `8011` 或"未登录"错误）：提示用户执行 `tencent-channel-cli token setup '<凭证>'` 重新配置凭证；
+5. **限流**（retCode `153` / 错误含"接口调用已超过申请的频率上限"）：**不报错、不询问用户**，直接 sleep 70s 后原样重试一次；若重试仍报 153，则告知用户"接口触发频率限制，请稍后再试"
 
 ## 链接识别
 
@@ -41,16 +48,16 @@ metadata: {"openclaw":{"emoji":"📢"}}
 
 ## 环境与认证
 
-**最低 CLI 版本：1.0.2**
+**最低 CLI 版本：1.0.3**
 
 ```bash
-tencent-channel-cli --version          # 未安装或版本 < 1.0.2 → npm install -g tencent-channel-cli
-tencent-channel-cli token verify       # 未登录 → tencent-channel-cli token setup（交互式输入凭证）或 tencent-channel-cli token setup '<凭证>' （直接传入）
+tencent-channel-cli version          # 未安装或版本 < 1.0.3 → npm install -g tencent-channel-cli
+tencent-channel-cli token verify       # 未登录 → 优先执行 tencent-channel-cli token setup '<凭证>'
 tencent-channel-cli doctor             # 自检连通性
 ```
 
 > tencent-channel-cli 不存在时必须先提示安装，禁止执行任何 tencent-channel-cli 命令。
-> CLI 版本低于 **1.0.2** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
+> CLI 版本低于 **1.0.3** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
 
 ## 更新检测
 
@@ -59,7 +66,13 @@ tencent-channel-cli doctor             # 自检连通性
 ```bash
 curl -sI -L https://connect.qq.com/skills/tencent-channel-community.zip
 # 检查 x-cos-meta-tcc-version     → Skill 最新版本（与本文件 frontmatter version 比对）
-# 检查 x-cos-meta-tcc-cli-version → 最新 CLI 版本（与 tencent-channel-cli --version 比对）
+# 检查 x-cos-meta-tcc-cli-version → 最新 CLI 版本（与 tencent-channel-cli version 比对）
+```
+
+```powershell
+$resp = Invoke-WebRequest -Method Head -MaximumRedirection 5 https://connect.qq.com/skills/tencent-channel-community.zip
+$resp.Headers["x-cos-meta-tcc-version"]
+$resp.Headers["x-cos-meta-tcc-cli-version"]
 ```
 
 SKILL有新版本时，从以下渠道获取更新：
@@ -112,10 +125,6 @@ agent 在多步骤操作中必须透传这些字段，**不向用户展示，也
 - 内容管理命令：`create_time` 已格式化为北京时间（`YYYY-MM-DD HH:MM:SS`），直接展示；`create_time_raw` 为原始秒级时间戳，仅供链式操作使用，不展示
 - 频道管理命令：原始秒级字段（如 `joinTime`、`shutupExpireTime`）自动附带 `{字段名}_human` 可读值，向用户展示 `_human` 字段，不展示原始时间戳；禁言时间戳为 `0` 时显示"无禁言"
 
-### 5. 特殊名称规则
-
-- **严禁向用户提及"帖子广场"**，统一显示为 **"频道主页"**
-
 ## 快捷命令
 
 当匹配下列意图时，优先使用快捷命令。一次调用替代多次 tool_call，提高处理速度。
@@ -131,7 +140,7 @@ agent 在多步骤操作中必须透传这些字段，**不向用户展示，也
 | 获取热门帖子详情并且总结 | `tencent-channel-cli feed hot-feeds-detail --json`                                                    |
 
 
-快捷命令是多轮交互：返回 `status: "waiting"` 时**不要放弃改用单命令**，按返回的 `resume_command` 中的模板填写 `--pick <INDEX>` 或 `--set key=value` 后执行即可（`--resume-id` 全程不变）。
+快捷命令是多轮交互：返回 `status: "waiting"` 时**不要放弃、不要改用单命令、不要误判为卡住**，必须继续执行返回里的 `resume_command`。`--resume-id` 全程不变。
 
 `latest-feeds-detail` 和`hot-feeds-detail` 默认返回的是帖子详情，需要再自行进行总结
 
@@ -147,5 +156,6 @@ tencent-channel-cli feed quick-publish --resume-id s-abc12345 --pick 0 --json
 # → {"data":{"status":"waiting",...}} 或 {"data":{"status":"done","result":{...}}}
 ```
 
-> **重要**：所有快捷命令调用必须加 `--json` flag。`status: "done"` 表示完成，`status: "waiting"` 表示需要继续交互。
+> **重要**：所有快捷命令调用必须加 `--json` flag。`status: "done"` 表示完成，`status: "waiting"` 表示必须继续 resume。
+> **PowerShell**：如果返回里的 `resume_command` 是裸命令，优先手动替换成 `tencent-channel-cli ...`（绝对路径或已加入 PATH）后再执行；不要尝试在同一个命令里交互式按键选择。
 
