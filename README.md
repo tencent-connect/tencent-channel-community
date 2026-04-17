@@ -12,7 +12,7 @@
   简体中文 | <a href="./README_EN.md">English</a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.2-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.3-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -43,16 +43,26 @@
 - **成员管理** - 查看已加入的频道、频道成员、子频道列表，支持按昵称搜索成员
 - **搜索功能** - 搜索频道、帖子、作者，支持跨频道全局搜索和频道内搜索
 - **分享功能** - 获取频道和帖子分享链接，解析分享链接
+- **频道号管理** - 修改频道号（10~14 位英文/数字，需频道主权限）
 - **管理操作** - 加入频道（支持多种验证方式）、退出频道、频道私信、加入设置管理、禁言/踢人、设置/移除管理员（需管理员权限）
 
 ### 📰 内容管理（帖子）
 
 - **浏览帖子** - 浏览频道主页或指定板块的帖子列表，支持翻页
 - **帖子详情** - 查看帖子详情、评论与回复，支持单独获取帖子分享短链
-- **发布编辑** - 发帖、改帖、删帖、移帖（支持图片/视频帖子，支持内嵌超链接）
+- **发布编辑** - 发帖、改帖、删帖、移帖（支持图片/视频帖子）
+- **内联语法** - 正文内嵌可点击链接 `[文本](url)` 与 @用户 `@[昵称](tinyid)`，评论/回复同样支持
+- **话题标签** - 短贴支持 `#话题`，长贴不支持
 - **互动功能** - 评论、回复、点赞、精华、置顶
-- **互动消息** - 查看顶帖、点赞、评论、回复、@等互动通知
 - **运营工具** - 内容巡检、问答类自动回复
+
+### 🔔 消息通知
+
+- **一键开启** - 全局开启频道消息通知，覆盖已加入的所有频道，无需按频道单独配置
+- **三类通知** - 互动消息（顶帖/点赞/评论/回复/@）、系统消息（加入申请等）、私信消息
+- **引用快捷操作** - 引用通知后说「回复他」「评论他」「同意」「拒绝」「回复私信」即可一步完成
+- **自动恢复** - OpenClaw 模式下服务异常中断时自动重新拉起
+- **Token 安全** - 更换 Token 时自动停止通知服务并清理本地状态
 
 ---
 
@@ -137,13 +147,13 @@ tencent-channel-cli doctor             # 自检连通性
 | `kick-guild-member` | 踢出频道成员 |
 | `upload-guild-avatar` | 修改频道头像 |
 | `update-guild-info` | 修改频道名称和简介 |
+| `modify-guild-number` | 修改频道号（10~14 位英文/数字，需频道主权限） |
 | `create-channel` | 创建子版块 |
 | `modify-channel` | 修改子版块 |
 | `delete-channel` | 删除子版块（不可逆） |
 | `add-admin` | 设置管理员（支持批量） |
 | `remove-admin` | 移除管理员（支持批量） |
-| `push-group-dm-msg` | 向指定用户发送频道私信 |
-| `push-qq-msg` | 发送 QQ 消息给自己 |
+| `push-group-dm-msg` | 向指定用户发送频道私信（支持 `--ref` 回复私信通知） |
 
 ### 内容管理工具
 
@@ -157,18 +167,29 @@ tencent-channel-cli doctor             # 自检连通性
 | `get-feed-share-url` | 获取指定帖子的分享短链 |
 | `search-guild-feeds` | 频道内按关键词搜索帖子 |
 | `get-notices` | 获取互动消息（顶帖/点赞/评论/回复/@） |
-| `publish-feed` | 发布新帖子（文字/图片/视频，支持内嵌超链接） |
+| `publish-feed` | 发布新帖子（文字/图片/视频，支持内联链接与 @） |
 | `alter-feed` | 修改帖子 |
 | `del-feed` | 删除帖子 |
 | `move-feed` | 将帖子移动到其他版块 |
-| `do-comment` | 发表/删除评论 |
-| `do-reply` | 发表/删除回复 |
+| `do-comment` | 发表/删除评论（支持 `--ref` 从通知自动填充） |
+| `do-reply` | 发表/删除回复（支持 `--ref` 从通知自动填充） |
 | `do-like` | 评论或回复点赞/取消点赞 |
 | `do-feed-prefer` | 帖子点赞/取消点赞 |
 | `set-feed-essence` | 设置/取消精华帖 |
 | `top-feed` | 置顶/取消置顶帖子 |
 | `push-essence-feed` | 推送精华帖通知 |
 | `upload-image` | 上传媒体文件（publish-feed 自动调用） |
+
+### 消息通知工具
+
+| 工具名 | 说明 |
+|--------|------|
+| `notices-on` | 开启频道消息通知（全局生效，覆盖已加入的所有频道） |
+| `notices-off` | 关闭通知并清理本地订阅状态 |
+| `notices-status` | 查看订阅状态、推送模式与服务运行情况 |
+| `check-notices` | 手动增量拉取新通知（与本地水位线对比） |
+| `get-recent-notices` | 纯本地读取最近通知，用于匹配引用回复 |
+| `deal-notice` | 处理系统通知（如加入申请的 `agree` / `refuse`） |
 
 ---
 
@@ -208,7 +229,8 @@ tencent-channel-community/
 ├── references/
 │   ├── manage-guild.md         # 频道管理参考文档
 │   ├── manage-member.md        # 成员管理参考文档
-│   └── feed-reference.md       # 内容管理参考文档
+│   ├── feed-reference.md       # 内容管理参考文档
+│   └── notification-reference.md # 消息通知参考文档
 ├── README.md                   # 中文说明
 └── README_EN.md                # English README
 ```

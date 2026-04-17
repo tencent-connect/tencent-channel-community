@@ -15,6 +15,7 @@
 | 加入频道 | `join-guild` | 内部自动预检，见下文 |
 | 修改头像 | `upload-guild-avatar` | 需本地图片路径 |
 | 修改名称/简介 | `update-guild-info` | 可只改其一 |
+| 修改频道号 | `modify-guild-number` | 10~14 位英文/数字，需频道主权限；别和 `guild_id` 混淆 |
 | 创建频道 | `create-theme-private-guild` | 未指定私密则默认公开 |
 | 创建/删除/修改版块 | `create-channel` / `delete-channel` / `modify-channel` | delete 不可逆，高风险 |
 | 查看加入设置 | `get-join-guild-setting` | 返回加入方式类型及验证问题 |
@@ -100,11 +101,22 @@ $body | tencent-channel-cli manage update-join-guild-setting
 
 ## 频道私信规则
 
-`push-group-dm-msg` 发送普通私信消息到指定用户。
+`push-group-dm-msg` 发送普通私信消息到指定用户。支持两种模式：
 
-- `peer-tiny-id`：目标用户 tiny_id（必须先通过 `guild-member-search` 或 `get-guild-member-list` 查到）
-- `source-guild-id`：来源频道 ID（私信消息关联的频道）
-- `text`：消息文本，≤1900 字符
+**⚠️ 模式选择决策规则（必须遵守）：**
+- 用户**引用了一条私信通知**并说"回复私信" → 使用**模式 2**（`--ref`）
+- 用户说"给某人发私信"/"发私信给某人"（**没有引用私信通知**） → 使用**模式 1**（先查 `tiny_id`，再直接发送）
+- **严禁**在主动发私信场景使用 `--ref`，`--ref` 仅用于回复已收到的私信通知
+
+**模式 1：直接发送（主动发私信）**
+1. 先通过 `guild-member-search` 或 `get-guild-member-list` 查到目标用户的 `tiny_id`
+2. 确定来源频道的 `guild_id`（即你和目标用户共同所在的频道）
+3. 调用：`tencent-channel-cli manage push-group-dm-msg --peer-tiny-id <tiny_id> --source-guild-id <guild_id> --text "内容" --json`
+
+**模式 2：回复私信通知（通过 --ref 自动填充）**
+- `ref`：通知编号（如 #1），CLI 自动从本地通知记录查找私信会话信息，并通过消息漫游获取对方 tinyId 和 sourceGuildId
+- 调用：`tencent-channel-cli manage push-group-dm-msg --ref <编号> --text "内容" --json`
+
 - **限制**：对方未回复之前只能发送 1 条消息（retCode `100707`）
 - **严禁**在未获取用户同意的情况下批量发送私信
 
@@ -114,7 +126,7 @@ $body | tencent-channel-cli manage update-join-guild-setting
 
 ## 陷阱（schema 不体现）
 
-- **频道号 ≠ guild_id**：用户可见的频道号（如 `pd20589127`）是展示层标识，不能当作 `guild_id` 使用。获取真实 guild_id 的方式：通过 `get-share-info` 解析分享链接，或从 `get-my-join-guild-info` 返回中提取
+- **频道号 ≠ guild_id**：用户可见的频道号（如 `pd20589127`）是展示层标识，不能当作 `guild_id` 使用。获取真实 guild_id 的方式：通过 `get-share-info` 解析分享链接，或从 `get-my-join-guild-info` 返回中提取。修改频道号用 `modify-guild-number --guild-id <ID> --guild-number <新频道号>`（10~14 位英文/数字）
 - `get-share-info` 仅限 `pd.qq.com` 域名链接
 - `join-guild` 的 `join_guild_answers` 和 `join_guild_comment` 仅 stdin JSON 可传
 - `push-group-dm-msg` 的 `source-guild-id` 不是目标用户所在频道，而是发送者所在的来源频道

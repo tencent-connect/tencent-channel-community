@@ -15,8 +15,8 @@
 | 评论回复翻页 | `get-next-page-replies` | 首次 attach_info 从 get-feed-comments 评论对象获取 |
 | 搜索帖子 | `search-guild-feeds` | 结果补充频道名称与分享短链 |
 | 互动消息 | `get-notices` | 类型: 1=顶帖 2=赞评论 3=赞回复 4=收到评论 5=收到回复 6=被@ |
-| 评论帖子 / "回复帖子" | `do-comment` | **禁止**用 do-reply 替代；删除时需 --yes |
-| 回复已有评论或回复 | `do-reply` | 需 comment_id，仅用于回复已有评论/回复；删除时需 --yes |
+| 评论帖子 / "回复帖子" | `do-comment` | **禁止**用 do-reply 替代；删除时需 --yes；支持 `--ref` 从通知自动填充 |
+| 回复已有评论或回复 | `do-reply` | 需 comment_id，仅用于回复已有评论/回复；删除时需 --yes；支持 `--ref` 从通知自动填充 |
 | 发帖 | `publish-feed` | 见「发帖规则」 |
 | 删帖 | `del-feed` | 高风险，需 --yes |
 | 编辑帖子 / 改帖 | `alter-feed` | 自动补取分享短链 |
@@ -40,10 +40,11 @@
 1. **确认频道**：有 guild_id + channel_id → 直接发。没有 → **必须先问用户**是指定频道还是全局发帖；选指定频道 → 查 `get-my-join-guild-info` → 选频道 → 查 `get-guild-channel-list` → 排除非帖子类版块，找到「帖子广场」作为默认「全部」版块直接发帖。**严禁**未经确认走全局发帖
 2. **全局发帖身份确认**：不传 guild_id/channel_id 时为「作者身份全局发帖」，要求账号具有「作者」角色，普通成员**无法**使用。执行前必须向用户确认其具有作者身份，确认后加 `--yes` 执行；未确认则引导用户传入 guild_id 和 channel_id 以普通成员身份发帖
 3. **短贴 vs 长贴**：正文 ≤1000 加权字 → 短贴(feed_type=1)无需标题；>1000 → 长贴(feed_type=2)需标题。用户要求长贴时先索取标题。禁止未提供 title 时擅自用 feed_type=2。**加权字**：中文/中文标点=1字，英文/数字/半角=0.5字
-4. **数量限制**：短贴 ≤1000字/≤18图/≤1视频；长贴 ≤10000字/≤50图/≤5视频；评论回复 ≤1图。超限 CLI 直接报错
-5. **超限拆分**：严禁自行拆分发布，必须先告知用户 → 提出拆分方案 → 获得确认后执行
-6. 正文为纯文本，不渲染 Markdown
-7. 成功后自动补取分享短链，展示短链即可，**不返回 feed_id**
+4. **话题标签（#话题）**：仅**短贴**（feed_type=1）支持话题标签。**长贴（feed_type=2）不支持话题标签**。CLI 对长贴传入话题参数（`topic_names` / `--topic-name` / 正文中的 `#[话题]()` 语法）会直接报错拦截
+5. **数量限制**：短贴 ≤1000字/≤18图/≤1视频；长贴 ≤10000字/≤50图/≤5视频；评论回复 ≤1图。超限 CLI 直接报错
+6. **超限拆分**：严禁自行拆分发布，必须先告知用户 → 提出拆分方案 → 获得确认后执行
+7. 正文为纯文本，不渲染 Markdown
+8. 成功后自动补取分享短链，展示短链即可，**不返回 feed_id**
 
 ### 分享链接
 
@@ -86,11 +87,12 @@
 | 删除回复必填字段 | 除 reply_id 外还需：`replier_id`、`feed_id`、`feed_author_id`、`feed_create_time`、`comment_id`、`comment_author_id`、`comment_create_time`、`guild_id`、`channel_id` |
 | @用户 ID 格式 | `at_users[].id` 必须是 tinyid（通常 >10 位数字），**严禁**传 QQ 号（≤10 位），CLI 会直接报错拦截 |
 | alter-feed @用户 | 支持 `--at-user tinyid:昵称` CLI flag（可多次指定），与 publish-feed 一致 |
-| 正文中禁止写链接 | **禁止**在 `content` 里用 Markdown 语法 `[文案](URL)` 或裸 URL 表示链接——Markdown 语法在帖子里原样显示为纯文本，链接不可点击。帖子内嵌链接必须通过 `urls` 数组（⚡stdin JSON）声明 |
+| 裸 URL 写入正文 | **禁止**在 `content` 里直接拼入裸 URL（如 `https://example.com`）——裸 URL 在帖子里原样显示为纯文本，不可点击。可点击链接必须用内联语法或 `--link` / `urls` 传入 |
+| 长贴不支持话题标签 | CLI 在发帖/编辑时如检测到话题参数（`topic_names` / `--topic-name` / `#[话题]()` 语法）会直接报错拦截，请改用短贴或移除话题参数 |
 
-## 帖子内嵌链接（⚡stdin JSON）
+## 内嵌链接与 @ 语法
 
-`publish-feed` / `alter-feed` 支持内嵌可点击超链接，通过 **stdin JSON 的 `urls` 数组**传入，CLI flag 不支持。
+`publish-feed` / `alter-feed` / `do-comment` / `do-reply` 均支持两种方式混入可点击链接和 @用户，**推荐使用内联语法**，更直观且位置精确。
 
 Windows / PowerShell 推荐写法：
 
@@ -105,29 +107,48 @@ $body | tencent-channel-cli feed publish-feed
 ```
 
 **字段：**
+### 内联语法（推荐）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `url` | string | 链接地址（必填） |
-| `displayText` | string | 显示文本；传空字符串时客户端显示原始 URL |
-| `type` | int | 链接类型；不传时短贴默认 `10`（富文本卡片），长贴默认 `0`（普通链接） |
+直接在 `--content` / `content` 正文中使用：
+
+| 语法 | 说明 |
+|------|------|
+| `[显示文字](https://url)` | 可点击超链接，链接出现在正文对应位置 |
+| `@[昵称](tinyid)` | @提及用户，@出现在正文对应位置 |
+
+两者可自由混排：
+
+```bash
+tencent-channel-cli feed publish-feed \
+  --guild-id 123 --channel-id 456 \
+  --content "本周技术分享见 [详情页](https://example.com/weekly)，@[张三](144115219800577368) 请查收。"
+```
+
+```bash
+tencent-channel-cli feed do-comment \
+  --feed-id B_xxx --feed-create-time 1700000000 \
+  --content "参考 [官方文档](https://docs.example.com) 里的说明，@[李四](144115219800577369) 也看看。"
+```
+
+### 独立参数（备选）
+
+需要批量传入、或链接/@ 出现在正文末尾时，也可用单独参数：
+
+| 参数 | 语法 | 适用命令 |
+|------|------|---------|
+| `--link url\|显示文字` | CLI flag，可多次指定 | 所有写入命令 |
+| `--at-user tinyid:昵称` | CLI flag，可多次指定 | 所有写入命令 |
+| `urls` (stdin JSON) | `[{"url":"…","displayText":"…"}]` | 所有写入命令 |
+| `at_users` (stdin JSON) | `[{"id":"tinyid","nick":"昵称"}]` | 所有写入命令 |
+
+**注意**：独立参数中的链接/@ 被追加在正文**末尾**，位置不可控；如需精确控制位置，用内联语法。
 
 **用户自然语言 → 参数组装规则：**
 
-- 用户说「链接是 X，显示文本是 Y」→ `{"url":"X","displayText":"Y"}`
-- 用户说「把 X 做成超链接」→ `{"url":"X","displayText":"X"}`（或根据上下文取合适文案）
-- 用户在正文中写了 `[文案](URL)` → 识别为链接意图，拆成 `{"url":"URL","displayText":"文案"}`，正文中保留「文案」纯文本
-- `content` 字段只写正文文字，不要把 URL 拼入正文
-
-**示例：**
-
-```bash
-echo '{
-  "guild_id": "123", "channel_id": "456",
-  "content": "本周技术分享已更新，点击查看详情了解更多。",
-  "urls": [{"url": "https://example.com/weekly", "displayText": "查看详情"}]
-}' | tencent-channel-cli feed publish-feed
-```
+- 用户说「链接是 X，显示文本是 Y」→ 内联写 `[Y](X)` 放入 content
+- 用户说「把 X 做成超链接」→ 内联写 `[X](X)` 或根据上下文取文案
+- 用户说「@张三」→ 先查 `tiny_id`，再内联写 `@[张三](tinyid)` 放入 content
+- `content` 字段只写正文文字和内联标记，**禁止**把裸 URL 拼入正文
 
 ## 自动化运营
 

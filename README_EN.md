@@ -12,7 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.2-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.3-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -42,16 +42,26 @@ All operations are invoked via `tencent-channel-cli <domain> <action>`, supporti
 - **Member Management** - View joined channels, channel members, and sub-channel lists, with member search by nickname
 - **Search** - Search channels, posts, and authors, with cross-channel global search and in-channel search
 - **Sharing** - Get channel and post share links, parse share links
+- **Guild Number** - Change the public guild number (10–14 alphanumerics, owner permission required)
 - **Admin Actions** - Join channels (with multiple verification modes), leave channels, send channel DMs, manage join settings, mute/remove members, set/remove admins (admin permission required)
 
 ### 📰 Content Management (Posts)
 
 - **Browse Posts** - Browse channel homepage posts or posts in a specific sub-channel with pagination support
 - **Post Details** - View post details, comments, and replies, with standalone post share-link retrieval
-- **Publishing & Editing** - Create, edit, delete, and move posts, including image/video posts with embedded hyperlinks
+- **Publishing & Editing** - Create, edit, delete, and move posts (text, image, and video)
+- **Inline Syntax** - Clickable links via `[text](url)` and mentions via `@[name](tinyid)` in post body, comments, and replies
+- **Topic Tags** - `#topic` tags supported on short posts only; long posts are not supported
 - **Interactions** - Comment, reply, like, set essence, and pin posts
-- **Notifications** - View interaction notifications for pins, likes, comments, replies, and mentions
 - **Operations Tools** - Content inspection and Q&A auto-reply tools
+
+### 🔔 Notifications
+
+- **One-click Setup** - Enable channel notifications globally across all joined channels — no per-channel configuration needed
+- **Three Categories** - Interaction (pins / likes / comments / replies / mentions), system messages (join requests, etc.), and direct messages
+- **Quote-to-Act** - Quote a notification and say "reply", "comment", "approve", "refuse", or "reply DM" to act in one step
+- **Auto Recovery** - The notification daemon auto-restarts after crashes or restarts under OpenClaw mode
+- **Token Safety** - Switching tokens automatically stops the daemon and clears local subscription state
 
 ---
 
@@ -136,13 +146,13 @@ tencent-channel-cli doctor             # Run connectivity self-check
 | `kick-guild-member` | Remove a member from the channel |
 | `upload-guild-avatar` | Update the channel avatar |
 | `update-guild-info` | Update the channel name and description |
+| `modify-guild-number` | Change the public guild number (10–14 alphanumerics, owner only) |
 | `create-channel` | Create a sub-channel |
 | `modify-channel` | Modify a sub-channel |
 | `delete-channel` | Delete a sub-channel (irreversible) |
 | `add-admin` | Set admin roles (supports batch) |
 | `remove-admin` | Remove admin roles (supports batch) |
-| `push-group-dm-msg` | Send a channel DM to a specified user |
-| `push-qq-msg` | Send a QQ message to yourself |
+| `push-group-dm-msg` | Send a channel DM to a specified user (supports `--ref` to reply a DM notification) |
 
 ### Content Management Tools
 
@@ -156,18 +166,29 @@ tencent-channel-cli doctor             # Run connectivity self-check
 | `get-feed-share-url` | Get the share short link for a specified post |
 | `search-guild-feeds` | Search posts by keyword within a channel |
 | `get-notices` | Get interaction notifications (pins / likes / comments / replies / mentions) |
-| `publish-feed` | Publish a new post (text, image, or video with embedded hyperlinks) |
+| `publish-feed` | Publish a new post (text, image, or video; supports inline links & mentions) |
 | `alter-feed` | Edit a post |
 | `del-feed` | Delete a post |
 | `move-feed` | Move a post to another sub-channel |
-| `do-comment` | Add or delete a comment |
-| `do-reply` | Add or delete a reply |
+| `do-comment` | Add or delete a comment (supports `--ref` to auto-fill from a notification) |
+| `do-reply` | Add or delete a reply (supports `--ref` to auto-fill from a notification) |
 | `do-like` | Like or unlike a comment or reply |
 | `do-feed-prefer` | Like or unlike a post |
 | `set-feed-essence` | Set or unset a post as essence |
 | `top-feed` | Pin or unpin a post |
 | `push-essence-feed` | Push essence post notification |
 | `upload-image` | Upload media files (automatically used by `publish-feed`) |
+
+### Notification Tools
+
+| Tool | Description |
+|------|-------------|
+| `notices-on` | Enable channel notifications globally across all joined channels |
+| `notices-off` | Disable notifications and clean up local subscription state |
+| `notices-status` | Check subscription status, push mode, and daemon state |
+| `check-notices` | Manually pull incremental notifications against the local watermark |
+| `get-recent-notices` | Read recent notifications locally, used for matching quoted replies |
+| `deal-notice` | Handle system notifications (e.g. `agree` / `refuse` for join requests) |
 
 ---
 
@@ -207,7 +228,8 @@ tencent-channel-community/
 ├── references/
 │   ├── manage-guild.md         # Channel management reference
 │   ├── manage-member.md        # Member management reference
-│   └── feed-reference.md       # Content management reference
+│   ├── feed-reference.md       # Content management reference
+│   └── notification-reference.md # Notification reference
 ├── README.md                   # Chinese README
 └── README_EN.md                # English README
 ```
