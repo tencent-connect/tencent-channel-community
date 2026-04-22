@@ -12,7 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.3-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.4-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -57,10 +57,10 @@ All operations are invoked via `tencent-channel-cli <domain> <action>`, supporti
 
 ### 🔔 Notifications
 
-- **One-click Setup** - Enable channel notifications globally across all joined channels — no per-channel configuration needed
+- **Two-step Setup** - First tests the push channel; only activates after the user confirms receipt. **OpenClaw platform only**
+- **Multi-channel Subscriptions** - Open subscriptions from different channels (e.g. QQBot, Feishu); each channel routes independently
 - **Three Categories** - Interaction (pins / likes / comments / replies / mentions), system messages (join requests, etc.), and direct messages
-- **Quote-to-Act** - Quote a notification and say "reply", "comment", "approve", "refuse", or "reply DM" to act in one step
-- **Auto Recovery** - The notification daemon auto-restarts after crashes or restarts under OpenClaw mode
+- **Quick Actions** - When notifications appear in context, say "reply", "comment", "approve", "refuse", or "reply DM" to act in one step
 - **Token Safety** - Switching tokens automatically stops the daemon and clears local subscription state
 
 ---
@@ -183,8 +183,8 @@ tencent-channel-cli doctor             # Run connectivity self-check
 
 | Tool | Description |
 |------|-------------|
-| `notices-on` | Enable channel notifications globally across all joined channels |
-| `notices-off` | Disable notifications and clean up local subscription state |
+| `notices-on` | Enable channel notifications (two-step: test push first, then `--confirm` to activate; OpenClaw only) |
+| `notices-off` | Disable notifications (with `--session-key` removes only that channel; without it clears all) |
 | `notices-status` | Check subscription status, push mode, and daemon state |
 | `check-notices` | Manually pull incremental notifications against the local watermark |
 | `get-recent-notices` | Read recent notifications locally, used for matching quoted replies |

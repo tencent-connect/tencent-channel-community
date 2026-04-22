@@ -12,7 +12,7 @@
   简体中文 | <a href="./README_EN.md">English</a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.3-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.4-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -58,10 +58,10 @@
 
 ### 🔔 消息通知
 
-- **一键开启** - 全局开启频道消息通知，覆盖已加入的所有频道，无需按频道单独配置
+- **两步开启** - 先测试推送验证通道，用户确认收到后正式开启；**仅支持 OpenClaw 平台**
+- **多通道订阅** - 可从不同通道（如 QQBot、飞书）分别开启，各通道独立路由并行推送
 - **三类通知** - 互动消息（顶帖/点赞/评论/回复/@）、系统消息（加入申请等）、私信消息
-- **引用快捷操作** - 引用通知后说「回复他」「评论他」「同意」「拒绝」「回复私信」即可一步完成
-- **自动恢复** - OpenClaw 模式下服务异常中断时自动重新拉起
+- **快捷处理** - 上下文出现通知后，直接说「回复他」「评论他」「同意」「拒绝」「回复私信」即可一步完成
 - **Token 安全** - 更换 Token 时自动停止通知服务并清理本地状态
 
 ---
@@ -184,8 +184,8 @@ tencent-channel-cli doctor             # 自检连通性
 
 | 工具名 | 说明 |
 |--------|------|
-| `notices-on` | 开启频道消息通知（全局生效，覆盖已加入的所有频道） |
-| `notices-off` | 关闭通知并清理本地订阅状态 |
+| `notices-on` | 开启频道消息通知（两步流程：先测试推送，用户确认后加 `--confirm` 正式开启；仅支持 OpenClaw） |
+| `notices-off` | 关闭通知（带 `--session-key` 时仅移除该通道，不带时全量关闭） |
 | `notices-status` | 查看订阅状态、推送模式与服务运行情况 |
 | `check-notices` | 手动增量拉取新通知（与本地水位线对比） |
 | `get-recent-notices` | 纯本地读取最近通知，用于匹配引用回复 |

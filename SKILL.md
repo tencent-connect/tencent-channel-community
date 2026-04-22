@@ -2,7 +2,7 @@
 name: tencent-channel-community
 description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入/退出，成员管理/禁言/踢人，帖子发布/编辑/删除/移动/搜索，评论/回复/点赞，版块管理，分享链接解析，频道私信，加入设置管理，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
 homepage: https://connect.qq.com/ai
-version: 1.1.3  
+version: 1.1.4
 metadata: {"openclaw":{"emoji":"📢"}}
 ---
 
@@ -26,9 +26,9 @@ Windows / PowerShell 使用要求：
 - `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、修改频道号、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接、加入设置、修改加入设置、私信、发私信、退出频道
 - `**references/manage-member.md`** — 成员、禁言、踢人、搜索成员、个人资料
 - `**references/feed-reference.md`** — 帖子、评论、回复、点赞、发帖、改帖、删帖、移帖、移动帖子、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
-- `**references/notification-reference.md`** — 消息通知、频道通知、开启通知、关闭通知、引用通知回复、token setup（setup_hint 处理）、subscribe_hint、daemon_guard、私信通知、系统通知
+- `**references/notification-reference.md`** — 消息通知、频道通知、开启通知、关闭通知、回复通知、处理通知、token setup（setup_hint 处理）、subscribe_hint、私信通知、系统通知
 
-> 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md；「消息通知」「通知」「开启通知」「关闭通知」「引用通知回复」→ notification-reference.md；「token setup 返回 setup_hint」→ notification-reference.md。
+> 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md；「消息通知」「通知」「开启通知」「关闭通知」「回复通知」「处理通知」→ notification-reference.md；「token setup 返回 setup_hint」→ notification-reference.md。
 > 帖子搜索有两种：跨频道全局搜索（`search-guild-content scope=feed`）→ manage-guild.md；频道内搜索（`search-guild-feeds`）→ feed-reference.md。
 
 ## 全局硬规则
@@ -39,7 +39,7 @@ Windows / PowerShell 使用要求：
 4. **URL 输出**：必须用 `<链接>` 包裹（如 `<https://pd.qq.com/s/xxx>`），不用 markdown 语法
 5. **鉴权失败**（retCode `8011` 或”未登录”错误）：提示用户执行 `tencent-channel-cli token setup '<凭证>'` 重新配置凭证；
 6. **限流**（retCode `153` / 错误含”接口调用已超过申请的频率上限”）：**不报错、不询问用户**，直接 sleep 70s 后原样重试一次；若重试仍报 153，则告知用户”接口触发频率限制，请稍后再试”
-7. **⚡ 通知相关字段与引用回复（必须处理）**：`setup_hint` / `subscribe_hint` 字段出现时必须立刻处理；用户引用通知消息说「回复他」「评论他」「同意」「拒绝」「回复私信」时必须执行对应命令。详见 `references/notification-reference.md` 第三、六节。
+7. **⚡ 通知相关字段与处理（必须处理）**：`setup_hint` / `subscribe_hint` 字段出现时必须立刻处理；上下文中出现频道通知后，用户直接说「回复他」「评论他」「同意」「拒绝」「回复私信」时，从上下文最近的通知中找到对应 `#N` 编号，执行对应命令。详见 `references/notification-reference.md` 第三、五节。
 
 ## 链接识别
 
@@ -53,16 +53,16 @@ Windows / PowerShell 使用要求：
 
 ## 环境与认证
 
-**最低 CLI 版本：1.0.4**
+**最低 CLI 版本：1.0.5**
 
 ```bash
-tencent-channel-cli version          # 未安装或版本 < 1.0.4 → npm install -g tencent-channel-cli
+tencent-channel-cli version          # 未安装或版本 < 1.0.5 → npm install -g tencent-channel-cli
 tencent-channel-cli token verify       # 未登录 → 优先执行 tencent-channel-cli token setup '<凭证>'
 tencent-channel-cli doctor             # 自检连通性
 ```
 
 > tencent-channel-cli 不存在时必须先提示安装，禁止执行任何 tencent-channel-cli 命令。
-> CLI 版本低于 **1.0.4** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
+> CLI 版本低于 **1.0.5** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
 
 ## 更新检测
 
